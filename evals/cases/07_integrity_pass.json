@@ -1,0 +1,24 @@
+{
+  "id": "07_integrity_pass",
+  "fixture": "av",
+  "kind": "integrity",
+  "derivation": "a freshly encoded file decodes without errors and yields all 150 declared frames",
+  "expect": [
+    {
+      "path": "data.status",
+      "value": "PASS"
+    },
+    {
+      "path": "data.checks.decode.errors.error_line_count",
+      "value": 0
+    },
+    {
+      "path": "data.checks.frames.decoded_video_frames",
+      "value": 150
+    },
+    {
+      "path": "data.checks.timestamps.streams.0.non_monotonic_dts",
+      "value": 0
+    }
+  ]
+}

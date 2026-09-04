@@ -1,0 +1,38 @@
+{
+  "id": "03_known_audio_format",
+  "fixture": "stereo",
+  "kind": "audio_format",
+  "derivation": "stereo.wav is 3 s pcm_s24le 48 kHz stereo -> bitrate 48000*2*24 = 2304000 bit/s",
+  "expect": [
+    {
+      "path": "data.codec",
+      "value": "pcm_s24le"
+    },
+    {
+      "path": "data.sample_rate",
+      "value": 48000
+    },
+    {
+      "path": "data.channels",
+      "value": 2
+    },
+    {
+      "path": "data.channel_layout",
+      "value": "stereo"
+    },
+    {
+      "path": "data.bits_per_sample",
+      "value": 24
+    },
+    {
+      "path": "data.bitrate",
+      "value": 2304000
+    },
+    {
+      "path": "data.duration",
+      "op": "approx",
+      "value": 3.0,
+      "tolerance": 0.01
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "id": "04_known_silence",
+  "fixture": "av",
+  "kind": "silence",
+  "parameters": {
+    "threshold_db": -50.0,
+    "min_duration": 0.5
+  },
+  "derivation": "av.mp4 audio is a 1 kHz tone only between t=2 s and t=5 s of 6 s -> leading silence 0..2, trailing silence 5..end (AAC framing adds up to ~0.05 s)",
+  "expect": [
+    {
+      "path": "data.segment_count",
+      "value": 2
+    },
+    {
+      "path": "data.segments.0.type",
+      "value": "leading"
+    },
+    {
+      "path": "data.segments.0.start",
+      "value": 0.0
+    },
+    {
+      "path": "data.segments.0.end",
+      "op": "approx",
+      "value": 2.0,
+      "tolerance": 0.05
+    },
+    {
+      "path": "data.segments.1.type",
+      "value": "trailing"
+    },
+    {
+      "path": "data.segments.1.start",
+      "op": "approx",
+      "value": 5.0,
+      "tolerance": 0.05
+    },
+    {
+      "path": "data.silent_seconds",
+      "op": "approx",
+      "value": 3.0,
+      "tolerance": 0.1
+    },
+    {
+      "path": "data.entirely_silent",
+      "value": false
+    },
+    {
+      "path": "analysis.parameters.threshold_db",
+      "value": -50.0
+    }
+  ]
+}

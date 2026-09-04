@@ -1,0 +1,29 @@
+{
+  "id": "05_known_loudness",
+  "fixture": "loud",
+  "kind": "loudness",
+  "derivation": "loud.wav is a continuous 1 kHz sine, amplitude 0.1 = -20 dBFS peak. ITU-R BS.1770: a 0 dBFS 997 Hz sine reads -3.01 LKFS, so -23.0 LUFS; true peak = -20.0 dBTP; a stationary tone has LRA 0 LU",
+  "expect": [
+    {
+      "path": "data.integrated_lufs",
+      "op": "approx",
+      "value": -23.0,
+      "tolerance": 0.2
+    },
+    {
+      "path": "data.true_peak_dbtp",
+      "op": "approx",
+      "value": -20.0,
+      "tolerance": 0.2
+    },
+    {
+      "path": "data.loudness_range_lu",
+      "op": "lte",
+      "value": 0.5
+    },
+    {
+      "path": "data.integrated_below_absolute_gate",
+      "value": false
+    }
+  ]
+}

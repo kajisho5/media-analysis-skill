@@ -1,0 +1,17 @@
+{
+  "id": "08_integrity_fail",
+  "fixture": "corrupt",
+  "kind": "integrity",
+  "derivation": "corrupt.mp4 has 3000 bytes zeroed inside the mdat box, so the H.264 / AAC decoders must report errors",
+  "expect": [
+    {
+      "path": "data.status",
+      "value": "FAIL"
+    },
+    {
+      "path": "data.checks.decode.errors.error_line_count",
+      "op": "gte",
+      "value": 1
+    }
+  ]
+}

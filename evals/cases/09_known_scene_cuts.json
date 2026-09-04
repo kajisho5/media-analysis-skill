@@ -1,0 +1,33 @@
+{
+  "id": "09_known_scene_cuts",
+  "fixture": "scenes",
+  "kind": "scene_detection",
+  "derivation": "scenes.mp4 concatenates three 2 s segments with hard cuts at t=2 and t=4",
+  "expect": [
+    {
+      "path": "data.cut_count",
+      "value": 2
+    },
+    {
+      "path": "data.cuts.0.time",
+      "op": "approx",
+      "value": 2.0,
+      "tolerance": 0.05
+    },
+    {
+      "path": "data.cuts.1.time",
+      "op": "approx",
+      "value": 4.0,
+      "tolerance": 0.05
+    },
+    {
+      "path": "data.scene_count",
+      "value": 3
+    },
+    {
+      "path": "data.cuts.0.score",
+      "op": "gte",
+      "value": 10.0
+    }
+  ]
+}

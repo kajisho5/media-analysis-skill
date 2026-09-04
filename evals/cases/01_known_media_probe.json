@@ -1,0 +1,66 @@
+{
+  "id": "01_known_media_probe",
+  "fixture": "av",
+  "kind": "media_probe",
+  "derivation": "av.mp4 is generated as 6 s testsrc2 320x180 @25 fps H.264 + mono AAC 48 kHz (tests/fixtures/generate.py)",
+  "expect": [
+    {
+      "path": "source",
+      "op": "startswith",
+      "value": "media-analysis/probe@"
+    },
+    {
+      "path": "data.container.format",
+      "op": "startswith",
+      "value": "mov,mp4"
+    },
+    {
+      "path": "data.container.duration",
+      "op": "approx",
+      "value": 6.0,
+      "tolerance": 0.05
+    },
+    {
+      "path": "data.video.codec",
+      "value": "h264"
+    },
+    {
+      "path": "data.video.width",
+      "value": 320
+    },
+    {
+      "path": "data.video.height",
+      "value": 180
+    },
+    {
+      "path": "data.video.fps",
+      "op": "approx",
+      "value": 25.0,
+      "tolerance": 0.001
+    },
+    {
+      "path": "data.video.pixel_format",
+      "value": "yuv420p"
+    },
+    {
+      "path": "data.audio.codec",
+      "value": "aac"
+    },
+    {
+      "path": "data.audio.sample_rate",
+      "value": 48000
+    },
+    {
+      "path": "data.audio.channels",
+      "value": 1
+    },
+    {
+      "path": "data.video_stream_count",
+      "value": 1
+    },
+    {
+      "path": "data.audio_stream_count",
+      "value": 1
+    }
+  ]
+}

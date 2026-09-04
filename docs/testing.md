@@ -1,0 +1,58 @@
+# Testing
+
+```text
+pip install -e . pytest
+python -m pytest -q          # 45 tests: unit + integration + evals
+python evals/run.py          # 9 eval cases with expected values and tolerances
+```
+
+FFmpeg is required. Integration tests and evals are **not skipped** when it is missing; the session fails, so a
+green run always means the real ffmpeg / ffprobe were exercised.
+
+## Fixtures (`tests/fixtures/generate.py`)
+
+Nothing binary is committed; fixtures are generated with ffmpeg into a temporary directory (a few hundred KB, ~2 s):
+
+| fixture | construction | used for |
+|---|---|---|
+| `av.mp4` | 6 s testsrc2 320x180 @25 H.264 + mono AAC 48 kHz; 1 kHz tone amplitude 0.1 only in t=2..5 s | probe, video, silence (leading 0–2, trailing 5–end), integrity PASS, cache, budget, CLI |
+| `video_only.mp4` | 4 s video, no audio | no-audio paths (`UNSUPPORTED_FORMAT` for audio kinds), integrity without frames shortfall |
+| `stereo.wav` | 3 s pcm_s24le 48 kHz stereo, same tone on both channels | audio_format, loudness −20.0 LUFS |
+| `mono.wav` | 3 s pcm_s24le 44.1 kHz mono, 440 Hz | audio_format, integrity audio-only |
+| `silence.wav` | 2 s digital silence | `entirely_silent`, loudness below the absolute gate |
+| `multi.mp4` | 2 video (320x180 @25, 160x90 @30) + 2 audio (mono 48 kHz eng, stereo 44.1 kHz jpn) | stream ordinals, per-stream selection |
+| `loud.wav` | 5 s continuous 1 kHz tone amplitude 0.1 → −23.0 LUFS, −20.0 dBTP, LRA 0 | loudness eval |
+| `short.mp4` | 0.4 s (10 frames) | short video |
+| `scenes.mp4` | three 2 s hard-cut segments | scene cuts at 2.0 and 4.0 s |
+| `corrupt.mp4` | `av.mp4` with 3000 bytes zeroed inside `mdat` | integrity FAIL |
+
+## Unit tests (`tests/test_unit.py`, no ffmpeg)
+
+contract ↔ registry agreement (no undeclared or unimplemented tools) · AnalysisRequest validation · command / argv
+rejection · kind validation · parameter validation (unknown, type, range, NaN) · probe / stream / video (CFR, VFR,
+unknown) / audio parsers · silence parser + classification · ebur128 parser (incl. `-inf`) · integrity status
+(PASS / WARN / FAIL) · scdet parser · malformed result · wrong asset / kind / analysis id / source · deterministic
+identity (parameter order, asset / version / parameter changes) · cache hit / miss / relabel / disabled · cache
+invalidation by asset, analyzer version, parameters · tampered and unreadable cache entries · timeout (real
+subprocess) · budget (calls, total seconds, cache hits free) · unsupported analyzer · dry-run runs nothing and still
+validates · path policy (roots, symlink escape, directories, NUL, workspace writes, argv shape) · no shell in source ·
+secret leakage (env value, secret-looking key, child environment) · command / argv leakage · error model.
+
+## Integration tests (`tests/test_integration.py`, real ffmpeg)
+
+MP4 probe · video stream analysis (CFR, frame count, short file) · audio stream analysis (stereo / mono) · silence
+(leading / trailing, entirely silent, identity changes with threshold) · loudness (−23.0 / −20.0 LUFS, silent input) ·
+integrity (PASS, FAIL on corruption, video-only, audio-only) · multiple streams (ordinals, per-stream video / audio /
+loudness, out-of-range ordinal) · no-audio video · scene detection · timing / duration · **cache hit skips the
+analyzer** (execution log: first run executed ffmpeg, second run executed nothing, a new engine reuses the disk cache)
+· budget and timeout with real processes · determinism across runs · CLI smoke (doctor, probe, analyze multi-kind,
+cache hit, dry-run JSON / text, error on stdout-JSON vs stderr, budget error, `run` with request file, argv rejection,
+`--allowed-input`, contract).
+
+## Evals (`evals/cases/*.json`, `evals/run.py`, `tests/test_evals.py`)
+
+Each case names its fixture, kind, parameters, the derivation of the expected values and a list of expectations
+(`eq`, `approx` with tolerance, `gte`, `lte`, `startswith`) on paths in the Observation. Cases: known media probe,
+known video format (stream 1 of a multi-stream file), known audio format, known silence, known loudness (mono and
+stereo), integrity PASS and FAIL, known scene cuts. Tolerances: 0.05 s for container / segment times, 0.2 LU / dB
+for loudness, exact for codecs / counts / dimensions.
