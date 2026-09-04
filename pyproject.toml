@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "media-analysis-skill"
+version = "0.1.0"
+description = "Deterministic media observation / analysis Skill (probe, streams, video/audio format, silence, loudness, integrity, scenes, timing). Not an AI agent."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [{name = "kajisho5"}]
+keywords = ["ffmpeg", "ffprobe", "media", "analysis", "observation", "skill"]
+dependencies = []
+
+[project.scripts]
+media-analysis = "media_analysis.cli:main"
+
+[project.urls]
+Repository = "https://github.com/kajisho5/media-analysis-skill"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

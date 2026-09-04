@@ -1,0 +1,45 @@
+name: tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: "3.9"
+          - os: ubuntu-latest
+            python: "3.11"
+          - os: windows-latest
+            python: "3.11"
+          - os: macos-latest
+            python: "3.11"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install FFmpeg (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install FFmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+      - name: Install FFmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg -y --no-progress
+      - run: ffprobe -version
+        shell: bash
+      - run: python -m pip install -e . pytest
+      - run: python -m pytest -q
+      - run: python evals/run.py
+      - run: python evals/contract_evals.py
+      - run: media-analysis doctor --json
+      - run: media-analysis contract --json > contract.json
+        shell: bash
+      - run: python -c "import json; json.load(open('contract.json'))"
+      - run: media-analysis contract --check contract.json --json

@@ -1,0 +1,21 @@
+{
+  "id": "version_mismatch",
+  "description": "a contract saved from another release",
+  "mutations": [
+    {
+      "op": "set",
+      "path": "version",
+      "value": "0.0.9"
+    },
+    {
+      "op": "set_tool_field",
+      "tool_id": "media-analysis/probe",
+      "field": "version",
+      "value": "0.0.9"
+    }
+  ],
+  "expect_problems": [
+    "version: expected",
+    "tools[media-analysis/probe].version"
+  ]
+}

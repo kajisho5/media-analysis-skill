@@ -1,0 +1,6 @@
+{
+  "id": "valid_contract",
+  "description": "the live contract itself (no mutation) must pass",
+  "mutations": [],
+  "expect_problems": []
+}

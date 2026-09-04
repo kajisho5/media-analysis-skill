@@ -1,0 +1,14 @@
+{
+  "id": "kind_mismatch",
+  "description": "an analysis kind without a tool",
+  "mutations": [
+    {
+      "op": "set",
+      "path": "analysis_kinds",
+      "value": "APPEND:speaker_detection"
+    }
+  ],
+  "expect_problems": [
+    "analysis_kinds"
+  ]
+}

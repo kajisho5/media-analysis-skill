@@ -1,0 +1,14 @@
+{
+  "id": "missing_tool",
+  "description": "an implemented tool that the document does not declare",
+  "mutations": [
+    {
+      "op": "delete_tool",
+      "tool_id": "media-analysis/loudness"
+    }
+  ],
+  "expect_problems": [
+    "implemented tool media-analysis/loudness is not declared",
+    "kinds covered"
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "06_known_loudness_stereo",
+  "fixture": "stereo",
+  "kind": "loudness",
+  "derivation": "the same -23.0 LUFS tone on two channels sums to +3.01 LU -> -20.0 LUFS; true peak per channel stays -20.0 dBTP",
+  "expect": [
+    {
+      "path": "data.integrated_lufs",
+      "op": "approx",
+      "value": -20.0,
+      "tolerance": 0.2
+    },
+    {
+      "path": "data.true_peak_dbtp",
+      "op": "approx",
+      "value": -20.0,
+      "tolerance": 0.2
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "extra_tool",
+  "description": "a declared tool that does not exist in the registry (future stub)",
+  "mutations": [
+    {
+      "op": "add_tool",
+      "tool_id": "media-analysis/speaker",
+      "kinds": [
+        "speaker_detection"
+      ]
+    }
+  ],
+  "expect_problems": [
+    "declared tool media-analysis/speaker is not implemented",
+    "kinds covered"
+  ]
+}

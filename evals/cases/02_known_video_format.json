@@ -1,0 +1,53 @@
+{
+  "id": "02_known_video_format",
+  "fixture": "multi",
+  "kind": "video_format",
+  "parameters": {
+    "stream": 1
+  },
+  "derivation": "multi.mp4 second video stream is smptebars 160x90 @30 fps for 4 s -> 120 frames, constant frame rate",
+  "expect": [
+    {
+      "path": "data.stream_index",
+      "value": 1
+    },
+    {
+      "path": "data.width",
+      "value": 160
+    },
+    {
+      "path": "data.height",
+      "value": 90
+    },
+    {
+      "path": "data.fps",
+      "op": "approx",
+      "value": 30.0,
+      "tolerance": 0.001
+    },
+    {
+      "path": "data.frame_rate_mode",
+      "value": "constant"
+    },
+    {
+      "path": "data.measured_fps",
+      "op": "approx",
+      "value": 30.0,
+      "tolerance": 0.05
+    },
+    {
+      "path": "data.frame_count",
+      "value": 120
+    },
+    {
+      "path": "data.display_aspect_ratio",
+      "value": "16:9"
+    },
+    {
+      "path": "data.duration",
+      "op": "approx",
+      "value": 4.0,
+      "tolerance": 0.05
+    }
+  ]
+}
