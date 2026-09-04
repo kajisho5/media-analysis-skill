@@ -93,6 +93,8 @@
   drift apart unnoticed; the agent repository is not installed or imported.
 
 ## ADR-018 CI covers Linux 3.9 / 3.11, Windows and macOS with a real FFmpeg
-- Each platform installs FFmpeg its own way (apt / choco / brew). Nothing is skipped on any platform; the one
+- Each platform installs FFmpeg its own way (apt / choco / brew). The first Windows run found two real defects
+  (`proc.kill()` leaves grandchildren alive; a 1 ns time budget is unmeasurable on a 16 ms clock): the runner now
+  uses `CREATE_NEW_PROCESS_GROUP` + `taskkill /T /F` on Windows, and the budget test uses a measurable duration. Nothing is skipped on any platform; the one
   platform-conditional piece of test code tolerates a refused symlink creation on Windows (privilege), while every
   other path-policy case still runs there.

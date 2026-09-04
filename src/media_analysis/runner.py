@@ -42,7 +42,7 @@ def run_argv(argv: List[str], timeout: Optional[float]) -> RunResult:
     t0 = time.monotonic()
     try:
         proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, errors="replace", start_new_session=True, env=_clean_env())
+                                text=True, errors="replace", env=_clean_env(), **_group_kwargs())
     except FileNotFoundError:
         raise AnalysisError("ANALYZER_UNAVAILABLE", f"executable not found: {os.path.basename(argv[0])}")
     try:
@@ -53,11 +53,24 @@ def run_argv(argv: List[str], timeout: Optional[float]) -> RunResult:
     return RunResult(proc.returncode, out or "", err or "", round(time.monotonic() - t0, 3))
 
 
+def _group_kwargs() -> dict:
+    """Start the child as the leader of its own process group so a timeout can kill it together with anything it
+    spawned: setsid on POSIX, CREATE_NEW_PROCESS_GROUP on Windows."""
+    if os.name == "nt":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
 def _kill_group(proc: subprocess.Popen) -> None:
-    try:
-        os.killpg(proc.pid, signal.SIGKILL)
-    except (ProcessLookupError, PermissionError, AttributeError):
+    """Kill the whole process group (POSIX: killpg SIGKILL; Windows: taskkill /T /F kills the process tree)."""
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         proc.kill()
+    else:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            proc.kill()
     try:
         proc.communicate(timeout=5)
     except Exception:

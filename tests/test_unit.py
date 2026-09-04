@@ -378,11 +378,16 @@ def test_budget_exceeded(tmp_path):
     with pytest.raises(AnalysisError) as e:
         eng.analyze(req(f))
     assert e.value.code == "BUDGET_EXCEEDED" and an.calls == 1 and e.value.details["calls"] == 1
-    eng2, an2 = make_engine(tmp_path, cache=False, budget=Budget(max_total_seconds=1e-9))
+    class Slow(CountingAnalyzer):
+        def analyze(self, ctx, kind, parameters):
+            import time
+            time.sleep(0.05)          # measurable on every platform's monotonic clock (Windows: ~16 ms resolution)
+            return super().analyze(ctx, kind, parameters)
+    eng2, an2 = make_engine(tmp_path, analyzer=Slow(), cache=False, budget=Budget(max_total_seconds=0.01))
     eng2.analyze(req(f))
     with pytest.raises(AnalysisError) as e:
         eng2.analyze(req(f))
-    assert e.value.code == "BUDGET_EXCEEDED" and an2.calls == 1
+    assert e.value.code == "BUDGET_EXCEEDED" and an2.calls == 1 and e.value.details["seconds"] >= 0.01
     with pytest.raises(AnalysisError):
         Budget(max_analysis_calls=-1)
 
