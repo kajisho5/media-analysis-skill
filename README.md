@@ -177,4 +177,9 @@ CI runs the same on Linux (Python 3.9 and 3.11), Windows and macOS with a real F
 Docs: [architecture](docs/architecture.md) · [tools](docs/tools.md) · [observation](docs/observation.md) ·
 [security](docs/security.md) · [testing](docs/testing.md) · [decisions](docs/decisions.md) · [SKILL.md](SKILL.md)
 
+## Support
+
+If this skill saves you time, you can help keep it maintained through [GitHub Sponsors](https://github.com/sponsors/kajisho5).
+Issues and pull requests are just as welcome.
+
 License: MIT
