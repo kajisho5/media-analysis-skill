@@ -187,6 +187,130 @@ def c10():
                 expect(len(eng.executions) == 1, "one execution overall")]
 
 
+@case("C11_contract_registry_consistency", "check_contract() accepts the live contract and flags every drift fixture in tests/contract/cases")
+def c11():
+    from contract.mutate import apply
+    from media_analysis.contract_check import check_contract
+    live = json.loads(json.dumps(skill_contract()))
+    out = [expect(check_contract(live) == [], "live contract self-validates")]
+    for path in sorted((HERE.parent / "tests" / "contract" / "cases").glob("*.json")):
+        case_doc = json.loads(path.read_text(encoding="utf-8"))
+        problems = check_contract(apply(live, case_doc["mutations"]))
+        ok = (problems == []) if not case_doc["expect_problems"] else all(any(n in p for p in problems) for n in case_doc["expect_problems"])
+        out.append(expect(ok, f"{case_doc['id']}: {problems[:2]}"))
+    return out
+
+
+@case("C12_invalid_input_json", "CLI `run -`: malformed JSON, missing / unknown kind, unknown parameter, command field -> one parseable error response each")
+def c12():
+    import subprocess
+    docs = ["{broken", json.dumps({"asset_id": "a", "input": "x.mp4"}), json.dumps({"asset_id": "a", "input": "x.mp4", "kind": "nope"}),
+            json.dumps({"asset_id": "a", "input": "x.mp4", "kind": "silence", "parameters": {"gain": 1}}), json.dumps({"asset_id": "a", "input": "x.mp4", "kind": "media_probe", "argv": ["x"]})]
+    out = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for d in docs:
+            r = subprocess.run([sys.executable, "-m", "media_analysis.cli", "run", "-", "--json"], cwd=tmp, input=d, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                resp = json.loads(r.stdout)
+                kind = resp.get("error_kind") or resp["results"][0]["error_kind"]
+                out.append(expect(r.returncode == 2 and resp["status"] == "error" and kind == "INVALID_INPUT" and r.stderr == "", d[:40]))
+            except (ValueError, KeyError, IndexError) as e:
+                out.append(expect(False, f"unparseable response for {d[:40]}: {e}"))
+    return out
+
+
+@case("C13_timeout_process_tree", "real ffmpeg: a timed-out request yields ANALYZER_TIMEOUT, leaves no cache entry and no ffmpeg process")
+def c13():
+    if not available():
+        return [expect(False, "ffmpeg / ffprobe required")]
+    with tempfile.TemporaryDirectory() as tmp:
+        fx = build_all(Path(tmp) / "fixtures")
+        pol = PathPolicy(workspace=tmp)
+        eng = AnalysisEngine(policy=pol, cache=ObservationCache(str(Path(tmp) / "cache"), pol))
+        doc = eng.run({"asset_id": "a", "input": str(fx["av"]), "kind": "integrity", "timeout": 0.001})
+        alive = []
+        if Path("/proc").is_dir():
+            for pid in Path("/proc").iterdir():
+                if pid.name.isdigit():
+                    try:
+                        cmd = (pid / "cmdline").read_bytes()
+                    except OSError:
+                        continue
+                    if b"ffmpeg" in cmd and str(fx["av"]).encode() in cmd:
+                        alive.append(pid.name)
+        return [expect(doc["status"] == "error" and doc["results"][0]["error_kind"] == "ANALYZER_TIMEOUT", "error kind"),
+                expect(not list((Path(tmp) / "cache").rglob("*.json")), "no cache entry"), expect(alive == [], f"ffmpeg processes: {alive}"),
+                expect(doc["observations"] == [], "no partial observation")]
+
+
+@case("C14_batch_identity", "results keep analysis_id / asset_id / kind per request regardless of order; same content -> same identity")
+def c14():
+    from test_unit import CountingAnalyzer, FakeRegistry, fake_caps
+    with tempfile.TemporaryDirectory() as tmp:
+        a, b = Path(tmp) / "a.bin", Path(tmp) / "b.bin"
+        a.write_bytes(b"aaaa")
+        b.write_bytes(b"bbbb")
+        eng = AnalysisEngine(caps=fake_caps("ffprobe"), registry=FakeRegistry(CountingAnalyzer()))
+        reqs = [{"analysis_id": "an-a", "asset_id": "asset-a", "input": str(a), "kind": "media_probe"},
+                {"analysis_id": "an-b", "asset_id": "asset-b", "input": str(b), "kind": "media_probe"}]
+        fwd, rev = eng.run({"requests": reqs}), eng.run({"requests": list(reversed(reqs))})
+        key = lambda r: (r["asset_id"], r["analysis_id"], r["observation"]["id"])  # noqa: E731
+        return [expect(sorted(map(key, fwd["results"])) == sorted(map(key, rev["results"])), "same identities in both orders"),
+                expect(fwd["results"][0]["observation"]["asset"]["fingerprint"] != fwd["results"][1]["observation"]["asset"]["fingerprint"], "different content, different fingerprint"),
+                expect([r["asset_id"] for r in rev["results"]] == ["asset-b", "asset-a"], "request order preserved in results")]
+
+
+@case("C15_no_audio", "real ffmpeg: video-only media -> audio kinds are UNSUPPORTED_FORMAT results, video kinds ok, batch partial")
+def c15():
+    if not available():
+        return [expect(False, "ffmpeg / ffprobe required")]
+    with tempfile.TemporaryDirectory() as tmp:
+        fx = build_all(Path(tmp) / "fixtures")
+        eng = AnalysisEngine(policy=PathPolicy(workspace=tmp))
+        doc = eng.run({"requests": [{"asset_id": "v", "input": str(fx["video_only"]), "kind": k} for k in ("media_probe", "audio_format", "silence", "loudness", "video_format", "timing")]})
+        by = {r["kind"]: r for r in doc["results"]}
+        return [expect(doc["status"] == "partial", "partial"),
+                expect(all(by[k]["status"] == "error" and by[k]["error_kind"] == "UNSUPPORTED_FORMAT" for k in ("audio_format", "silence", "loudness")), "audio kinds unsupported"),
+                expect(all(by[k]["status"] == "ok" for k in ("media_probe", "video_format", "timing")), "video kinds ok"),
+                expect(by["media_probe"]["observation"]["data"]["audio"] is None and by["media_probe"]["observation"]["data"]["audio_stream_count"] == 0, "probe reports no audio as a fact")]
+
+
+@case("C16_deterministic_result", "real ffmpeg: two engines, no cache -> identical observation id, identity, data, fingerprint")
+def c16():
+    if not available():
+        return [expect(False, "ffmpeg / ffprobe required")]
+    with tempfile.TemporaryDirectory() as tmp:
+        fx = build_all(Path(tmp) / "fixtures")
+        reqs = [{"asset_id": "a", "input": str(fx["av"]), "kind": k} for k in ("silence", "loudness", "scene_detection", "timing")]
+        d1 = AnalysisEngine(policy=PathPolicy(workspace=tmp)).run({"requests": reqs})
+        d2 = AnalysisEngine(policy=PathPolicy(workspace=tmp)).run({"requests": reqs})
+        same = all(o1["id"] == o2["id"] and o1["data"] == o2["data"] and o1["asset"] == o2["asset"] for o1, o2 in zip(d1["observations"], d2["observations"]))
+        return [expect(d1["status"] == d2["status"] == "ok", "both ok"), expect(same, "identical observations")]
+
+
+@case("C17_cache_invalidation", "content change, analyzer version change and parameter change each invalidate; corruption is 'invalid'")
+def c17():
+    from test_unit import CountingAnalyzer, FakeRegistry, fake_caps
+    with tempfile.TemporaryDirectory() as tmp:
+        f = Path(tmp) / "a.bin"
+        f.write_bytes(b"v1")
+        an = CountingAnalyzer()
+        pol = PathPolicy(workspace=tmp)
+        eng = AnalysisEngine(caps=fake_caps("ffprobe"), registry=FakeRegistry(an), policy=pol, cache=ObservationCache(str(Path(tmp) / "cache"), pol))
+        req = {"asset_id": "a", "input": str(f), "kind": "media_probe"}
+        s1 = eng.analyze(req)["cache"]["status"]
+        s2 = eng.analyze(req)["cache"]["status"]
+        f.write_bytes(b"v2")
+        s3 = eng.analyze(req)["cache"]["status"]
+        an.version = "0.1.1"
+        s4 = eng.analyze(req)["cache"]["status"]
+        key = eng.analyze(req)["cache"]["key"]
+        entry = Path(tmp) / "cache" / key[:2] / f"{key}.json"
+        entry.write_text("{corrupt")
+        s5 = eng.analyze(req)["cache"]["status"]
+        return [expect([s1, s2, s3, s4, s5] == ["miss", "hit", "miss", "miss", "invalid"], f"statuses {[s1, s2, s3, s4, s5]}"), expect(an.calls == 4, f"analyzer calls {an.calls}")]
+
+
 def run_all() -> List[Dict[str, Any]]:
     results = []
     for c in CASES:

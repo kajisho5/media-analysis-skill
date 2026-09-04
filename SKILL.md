@@ -16,7 +16,7 @@ media-analysis analyze <input> --kind <kind> [--kind <kind> ...] [--param key=va
                        [--cache-dir DIR] [--workspace DIR] [--allowed-input ROOT ...] [--round N]
 media-analysis run <request.json | -> [--json] [--dry-run] [engine options]      # canonical machine interface
 media-analysis doctor [--json] [--cache-dir DIR] [--workspace DIR]
-media-analysis contract [--json]
+media-analysis contract [--json] [--check FILE|-]
 ```
 
 Engine options: `--timeout S`, `--max-analysis-calls N`, `--max-total-seconds S`, `--cache-dir DIR`,
@@ -91,7 +91,12 @@ A failed result has `"status": "error"`, `"error": {"code", "message", "details"
 4. Set `--max-analysis-calls` / `--max-total-seconds` (or a batch `budget`) when you have a budget; `BUDGET_EXCEEDED`
    means that analyzer did not run and no observation exists for it.
 5. Treat `status: WARN` / `FAIL` (integrity), `frame_rate_mode: "variable"`, `entirely_silent: true`,
-   `integrated_below_absolute_gate: true` as facts to reason about, not as decisions made for you.
+   `integrated_below_absolute_gate: true` as facts to reason about, not as decisions made for you. The Skill never
+   emits a recommendation, a confidence-of-action or an inference; "silence 0–3 s exists" is its whole statement,
+   "trim it" is yours.
+6. Budgets are analyzer wall-clock limits (`max_total_seconds` is seconds of analyzer execution, not media duration).
+7. Save `contract --json` once and re-validate it with `contract --check` after upgrades; `status: drift` means
+   your cached tool table is stale.
 
 ## Boundaries
 

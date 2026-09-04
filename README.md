@@ -18,6 +18,7 @@ media-analysis run request.json --json          # canonical machine interface: A
 cat request.json | media-analysis run - --json  # same, over stdin
 media-analysis doctor --json                    # environment vs. contract: python, ffmpeg, ffprobe, filters, registry, cache, path policy
 media-analysis contract --json                  # machine-readable Skill / Tool contract with request / response / observation schemas
+media-analysis contract --check saved.json      # does a saved contract still describe this installation? (drift detection, exit 1 on drift)
 ```
 
 Requirements: Python 3.9+, standard library only; FFmpeg (`ffmpeg` + `ffprobe`) on PATH. Install: `pip install -e .`
@@ -126,7 +127,11 @@ Step-by-step adapter recipe: [docs/architecture.md](docs/architecture.md#connect
   structured data; `-protocol_whitelist file`; inputs resolved and optionally confined to `--allowed-input` roots;
   writes confined to the workspace; child processes get a minimal environment. See [docs/security.md](docs/security.md).
 - **Honesty**: `doctor` reports only what was detected; analyzers whose capability is missing are `unavailable`;
-  measurements that could not be made are `null` / `not_performed`, never PASS.
+  measurements that could not be made are `null` / `not_performed`, never PASS. A failed analyzer run still reports
+  its cost (`usage.analyzer_calls = 1`) in the error result; errors are never cached.
+- **No inference**: an Observation says what exists (`silence 0.0–3.0 s`, `integrity FAIL: 19 decoder error lines`,
+  `cut at 2.0 s, score 29.4`). It never says what to do about it. There is no `confidence` field anywhere: values
+  such as `cut_score` are measurements against the stated parameters, not a probability that the agent should act.
 
 ## Structured errors
 
@@ -151,7 +156,10 @@ document itself was rejected); without `--json`, one line on stderr. The table i
   is a patch; renaming / removing a key, changing a default or changing how a value is measured bumps the minor
   version and therefore the analyzer version, which invalidates cached Observations by design.
 - Contract schemas (`contract --json` → `schema_versions`): `contract`, `request`, `response`, `observation` are
-  versioned separately and bumped only when the corresponding document shape changes incompatibly. Stable
+  versioned separately and bumped only when the corresponding document shape changes incompatibly. Within
+  `media-analysis/contract@1` changes are additive only (new optional fields, new kinds); an adapter that saved the
+  contract can verify it against the installed skill with `contract --check` (`status: ok | drift`). A future
+  `contract@2` would be a different `schema` value and is refused by `--check` of a `@1` implementation. Stable
   identifiers for the video-production-agent adapter: `skill_id`, `version`, `tools[].tool_id`, `tools[].version`,
   `tools[].required_capabilities`, `tools[].kinds`, `kind_to_tool`, `errors.exit_codes`.
 

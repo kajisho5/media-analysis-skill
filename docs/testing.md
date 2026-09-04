@@ -2,9 +2,9 @@
 
 ```text
 pip install -e . pytest
-python -m pytest -q               # 59 tests: unit + contract + integration + evals
+python -m pytest -q               # 93 tests: unit + contract + integration + evals
 python evals/run.py               # 9 measurement eval cases with expected values and tolerances
-python evals/contract_evals.py    # 10 contract eval cases
+python evals/contract_evals.py    # 17 contract eval cases
 ```
 
 FFmpeg is required. Integration tests and evals are **not skipped** when it is missing; the session fails, so a
@@ -48,7 +48,10 @@ capability names) · consumer rules from `tests/contract/agent_skill_package_con
 SkillPackage / ToolSpec / Observation / capability-name rules) · request schema ↔ `AnalysisRequest` agreement (incl.
 `strategy` / `budget` / `cache_policy` rejection) · response / result / observation schema roundtrip through
 `engine.run` (ok, partial, error, dry-run, rejected document) · exit code table · process-group kill of a grandchild
-· executable path not configurable.
+· executable path not configurable · `check_contract` accepts the live contract · **15 drift fixtures**
+(`tests/contract/cases`: valid, unsupported schema, missing / extra tool, tool / capability / kind / kind_to_tool /
+version / schema-version / schema / invocation / provenance / exit-code mismatch) · `contract --check` CLI (file,
+stdin, unreadable) · no confidence / judgement vocabulary in analyzers · batch identity independent of order.
 
 ## Integration tests (`tests/test_integration.py`, real ffmpeg)
 
@@ -63,14 +66,23 @@ multi-stream media, response validated against the published schemas, second bat
 (doctor, probe, analyze multi-kind, cache hit, dry-run JSON / text, error inside the JSON document vs stderr, partial
 batch with budget error, `run` with request file, argv rejection, `--allowed-input`, contract) · `run -` over stdin
 with a batch and budget (partial status, per-result errors, exactly one stdout document), invalid JSON on stdin,
-unknown budget field.
+unknown budget field · **invalid-input matrix** over stdin (invalid JSON, missing asset / kind, unknown kind,
+invalid / unknown parameter, path traversal, nonexistent file, non-media file, command field, executable override →
+one parseable error response each, stderr empty) · absolute vs relative input (one identity) and `--allowed-input` ·
+timeout inside a batch keeps the protocol (partial response, others served, no cache entry, no ffmpeg left) ·
+**real-media matrix**: all 10 kinds × 10 fixtures validated against the schemas, expected `UNSUPPORTED_FORMAT` for
+audio kinds on video-only and video kinds on audio-only media, second pass served from cache except the
+never-cached errors · determinism across two processes.
 
 ## Contract evals (`evals/contract_evals.py`, `tests/test_evals.py`)
 
 C01 contract JSON valid · C02 declared tools exist · C03 declared kinds exist · C04 observation schema valid ·
 C05 request / response roundtrip · C06 unsupported field rejection (request, parameter, output_policy, batch budget) ·
 C07 malicious command rejected · C08 path traversal rejected (input and cache dir) · C09 credential leakage rejected ·
-C10 cache hit produces the identical observation with zero analyzer calls (real ffmpeg).
+C10 cache hit produces the identical observation with zero analyzer calls (real ffmpeg) · C11 contract / registry
+consistency over every drift fixture · C12 invalid input JSON over `run -` · C13 timeout process tree (real ffmpeg) ·
+C14 batch identity · C15 no-audio media · C16 deterministic result across engines (real ffmpeg) · C17 cache
+invalidation (content, version, parameters, corruption).
 
 ## Measurement evals (`evals/cases/*.json`, `evals/run.py`, `tests/test_evals.py`)
 

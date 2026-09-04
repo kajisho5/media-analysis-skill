@@ -1,0 +1,14 @@
+{
+  "id": "unsupported_schema",
+  "description": "a contract@2 document is refused, not partially accepted",
+  "mutations": [
+    {
+      "op": "set",
+      "path": "schema",
+      "value": "media-analysis/contract@2"
+    }
+  ],
+  "expect_problems": [
+    "unsupported schema"
+  ]
+}

@@ -98,3 +98,22 @@
   uses `CREATE_NEW_PROCESS_GROUP` + `taskkill /T /F` on Windows, and the budget test uses a measurable duration. Nothing is skipped on any platform; the one
   platform-conditional piece of test code tolerates a refused symlink creation on Windows (privilege), while every
   other path-policy case still runs there.
+
+## ADR-019 A failed analyzer run is reported as usage
+- Context: an error result used to show `analyzer_calls = 0` even when ffprobe / ffmpeg had run before the
+  failure (e.g. a stream ordinal out of range, a decode failure). The budget was charged, the report was not.
+- Decision: `run()` fills the error result's `usage` from the execution log when the analyzer ran, so what the
+  agent sees equals what the budget counted. Errors are never cached, so repeating an unsupported request costs a
+  call each time and says so.
+
+## ADR-020 Contract drift is detected by mutation fixtures, not by a saved copy
+- `contract --check` and `contract_check.check_contract()` compare a document with the live implementation.
+  Fixtures in `tests/contract/cases` describe *mutations* of the live contract (delete a tool, change a capability,
+  bump a version, add a kind) and the problems each must raise; a full hand-written "valid contract" fixture was
+  rejected because it would be a second source of truth that drifts silently. `contract@1` is the only supported
+  schema; a `@2` document is refused as a whole rather than half-validated.
+
+## ADR-021 No confidence field
+- Observations carry measurements against recorded parameters. A `confidence` value would read as "probability the
+  agent should act", which is inference. Scores that are measurements (`cut_score`, `probe_score`) keep their
+  measurement names. A static test forbids confidence / recommendation vocabulary in the analyzers.

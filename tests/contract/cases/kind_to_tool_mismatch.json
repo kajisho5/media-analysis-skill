@@ -1,0 +1,15 @@
+{
+  "id": "kind_to_tool_mismatch",
+  "description": "kind routed to a different tool",
+  "mutations": [
+    {
+      "op": "set_map",
+      "path": "kind_to_tool",
+      "key": "silence",
+      "value": "media-analysis/loudness"
+    }
+  ],
+  "expect_problems": [
+    "kind_to_tool"
+  ]
+}

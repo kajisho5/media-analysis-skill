@@ -1,0 +1,15 @@
+{
+  "id": "schema_version_mismatch",
+  "description": "response schema version changed without the implementation",
+  "mutations": [
+    {
+      "op": "set_map",
+      "path": "schema_versions",
+      "key": "response",
+      "value": "2"
+    }
+  ],
+  "expect_problems": [
+    "schema_versions"
+  ]
+}

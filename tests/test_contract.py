@@ -217,3 +217,78 @@ def test_executable_path_not_configurable():
     assert "shutil.which" in files["runner.py"] and "which(" in files["capabilities.py"]   # executables come from PATH only
     sch = request_schema(list(ANALYSIS_KINDS), PARAMETER_SCHEMAS)
     assert not any(k in sch["properties"] for k in ("ffmpeg", "ffprobe", "executable", "command", "argv"))
+
+
+# ---- contract self-validation and drift fixtures (tests/contract/cases)
+CASES_DIR = Path(__file__).parent / "contract" / "cases"
+
+
+def _cases():
+    return sorted(CASES_DIR.glob("*.json"))
+
+
+def test_contract_check_accepts_live_contract():
+    from media_analysis.contract_check import check_contract
+    live = json.loads(json.dumps(skill_contract(), allow_nan=False))
+    assert check_contract(live) == []
+    assert check_contract("nope") == ["contract: document is not an object"]
+
+
+@pytest.mark.parametrize("case_path", _cases(), ids=lambda p: p.stem)
+def test_contract_drift_fixture(case_path):
+    from media_analysis.contract_check import check_contract
+    from contract.mutate import apply
+    case = json.loads(case_path.read_text(encoding="utf-8"))
+    doc = apply(json.loads(json.dumps(skill_contract())), case["mutations"])
+    problems = check_contract(doc)
+    if not case["expect_problems"]:
+        assert problems == []
+    else:
+        for needle in case["expect_problems"]:
+            assert any(needle in p for p in problems), (needle, problems)
+        assert len(problems) >= len(case["expect_problems"])
+
+
+def test_contract_check_cli(tmp_path):
+    saved = tmp_path / "contract.json"
+    r = subprocess.run([sys.executable, "-m", "media_analysis.cli", "contract", "--json"], cwd=str(tmp_path), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    saved.write_text(r.stdout)
+    r = subprocess.run([sys.executable, "-m", "media_analysis.cli", "contract", "--check", str(saved), "--json"], cwd=str(tmp_path), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    doc = json.loads(r.stdout)
+    assert r.returncode == 0 and doc["status"] == "ok" and doc["problems"] == [] and doc["supported_schemas"] == ["media-analysis/contract@1"]
+    drifted = json.loads(saved.read_text())
+    drifted["version"] = "9.9.9"
+    r = subprocess.run([sys.executable, "-m", "media_analysis.cli", "contract", "--check", "-", "--json"], cwd=str(tmp_path), input=json.dumps(drifted),
+                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    doc = json.loads(r.stdout)
+    assert r.returncode == 1 and doc["status"] == "drift" and any("version" in p for p in doc["problems"])
+    r = subprocess.run([sys.executable, "-m", "media_analysis.cli", "contract", "--check", "-"], cwd=str(tmp_path), input="{broken", stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    assert r.returncode == 1 and "cannot read" in r.stdout
+
+
+def test_observation_has_no_confidence_or_judgement_fields():
+    """Observations carry measurements only: no confidence, no recommendation, no decision vocabulary."""
+    src = Path(__file__).resolve().parent.parent / "src" / "media_analysis" / "analyzers"
+    text = "\n".join(p.read_text(encoding="utf-8") for p in src.rglob("*.py")).lower()
+    for word in ('"confidence"', '"recommend', '"should_', '"decision"', '"unwanted"', '"important"', '"keep"', '"remove"'):
+        assert word not in text, word
+    assert "confidence" not in json.dumps(OBSERVATION_SCHEMA)
+
+
+def test_batch_identity_independent_of_order(tmp_path):
+    from test_unit import CountingAnalyzer, FakeRegistry, fake_caps
+    a, b = tmp_path / "a.bin", tmp_path / "b.bin"
+    a.write_bytes(b"aaaa")
+    b.write_bytes(b"bbbb")
+    eng = AnalysisEngine(caps=fake_caps("ffprobe"), registry=FakeRegistry(CountingAnalyzer()), clock=lambda: "2026-09-04T00:00:00Z")
+    reqs = [{"analysis_id": "an-a", "asset_id": "asset-a", "input": str(a), "kind": "media_probe"},
+            {"analysis_id": "an-b", "asset_id": "asset-b", "input": str(b), "kind": "media_probe"},
+            {"asset_id": "asset-a2", "input": str(a), "kind": "media_probe"}]
+    fwd = eng.run({"requests": reqs})
+    rev = eng.run({"requests": list(reversed(reqs))})
+    by_id = lambda doc: {(r["asset_id"], r["analysis_id"]): r["observation"] for r in doc["results"]}  # noqa: E731
+    f, r = by_id(fwd), by_id(rev)
+    assert set(f) == set(r) and all(f[k]["data"] == r[k]["data"] and f[k]["id"] == r[k]["id"] for k in f)
+    assert f[("asset-a", "an-a")]["asset"]["fingerprint"] != f[("asset-b", "an-b")]["asset"]["fingerprint"]
+    assert f[("asset-a", "an-a")]["id"] == f[("asset-a2", "analysis-" + f[("asset-a", "an-a")]["analysis"]["identity"][:16])]["id"]   # same file, same identity
+    assert [x["asset_id"] for x in fwd["observations"]] == ["asset-a", "asset-b", "asset-a2"]

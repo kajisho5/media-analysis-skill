@@ -1,0 +1,25 @@
+{
+  "id": "invocation_mismatch",
+  "description": "invocation contract changed",
+  "mutations": [
+    {
+      "op": "set_map",
+      "path": "execution",
+      "key": "canonical_invocation",
+      "value": [
+        "media-analysis",
+        "analyze"
+      ]
+    },
+    {
+      "op": "set_map",
+      "path": "execution",
+      "key": "ai",
+      "value": true
+    }
+  ],
+  "expect_problems": [
+    "execution.canonical_invocation",
+    "execution.ai"
+  ]
+}

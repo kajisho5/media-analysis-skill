@@ -18,6 +18,7 @@ from .budget import Budget
 from .cache import ObservationCache
 from .capabilities import detect
 from .contract import ANALYSIS_KINDS, PARAMETER_SCHEMAS, skill_contract
+from .contract_check import check_contract
 from .engine import AnalysisEngine, exit_code_for
 from .errors import AnalysisError
 from .registry import default_registry
@@ -89,7 +90,8 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--allowed-input", action="append", help="input roots to report")
     _add_common(d)
 
-    c = sub.add_parser("contract", help="print the Skill / Tool contract")
+    c = sub.add_parser("contract", help="print the Skill / Tool contract, or check a saved contract against this installation")
+    c.add_argument("--check", metavar="FILE", help="validate a contract document (file, or - for stdin) against the implementation; exit 0 only when identical")
     _add_common(c)
     return ap
 
@@ -174,15 +176,10 @@ def doctor_report(workspace: Optional[str] = None, cache_dir: Optional[str] = No
     try:
         contract = skill_contract()
         refs = contract_refs(contract["analysis_kinds"], {})
-        declared = {t["tool_id"] for t in contract["tools"]}
+        issues = check_contract(json.loads(json.dumps(contract, allow_nan=False)))   # the printed document must round-trip and self-validate
         implemented = {r["tool_id"] for r in rows}
-        issues = []
-        if declared != implemented:
-            issues.append(f"declared tools {sorted(declared)} != implemented {sorted(implemented)}")
-        kinds_by_tools = {k for t in contract["tools"] for k in t["kinds"]}
-        if kinds_by_tools != set(contract["analysis_kinds"]):
-            issues.append("tool kinds do not cover analysis_kinds")
-        json.dumps(contract, allow_nan=False)
+        if {t["tool_id"] for t in contract["tools"]} != implemented:
+            issues.append(f"declared tools != registry availability rows {sorted(implemented)}")
         checks["contract"] = {"status": "ok" if not issues else "fail", "schema": contract["schema"], "tools": len(contract["tools"]),
                               "kinds": len(contract["analysis_kinds"]), "issues": issues, "schemas": sorted(contract["schemas"]), "refs": sorted(refs)}
         problems += ["contract: " + i for i in issues]
@@ -245,7 +242,24 @@ def _print_doctor(doc: Dict[str, Any]) -> None:
         print(f"problem: {p}")
 
 
-def _contract(as_json: bool) -> int:
+def _contract(as_json: bool, check: Optional[str] = None) -> int:
+    if check is not None:
+        try:
+            text = sys.stdin.read() if check == "-" else open(check, "r", encoding="utf-8").read()
+            saved = json.loads(text)
+        except (OSError, ValueError) as e:
+            problems = [f"contract: cannot read document: {e}"]
+        else:
+            problems = check_contract(saved)
+        report = {"schema": "media-analysis/contract-check@1", "skill": {"id": SKILL_ID, "version": VERSION}, "status": "ok" if not problems else "drift",
+                  "supported_schemas": ["media-analysis/contract@1"], "problems": problems}
+        if as_json:
+            print(json.dumps(report, indent=2))
+        else:
+            print(f"contract check: {report['status']}")
+            for p in problems:
+                print(f"  - {p}")
+        return 0 if not problems else 1
     doc = skill_contract()
     if as_json:
         print(json.dumps(doc, indent=2))
@@ -268,7 +282,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             _print_doctor(doc)
         return 0 if doc["status"] != "fail" else 1
     if args.cmd == "contract":
-        return _contract(as_json)
+        return _contract(as_json, args.check)
     try:
         engine = _engine(args)
         document = _document(args)

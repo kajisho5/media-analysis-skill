@@ -1,0 +1,18 @@
+{
+  "id": "tool_mismatch",
+  "description": "a tool serving a different kind than the implementation",
+  "mutations": [
+    {
+      "op": "set_tool_field",
+      "tool_id": "media-analysis/silence",
+      "field": "kinds",
+      "value": [
+        "loudness"
+      ]
+    }
+  ],
+  "expect_problems": [
+    "tools[media-analysis/silence].kinds",
+    "kinds covered"
+  ]
+}

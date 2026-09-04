@@ -155,10 +155,15 @@ class AnalysisEngine:
             self.tracker = BudgetTracker(budget)
         results = []
         for doc in requests:
+            before = len(self.executions)
             try:
                 results.append(self.plan(doc) if dry_run else self.analyze(doc))
             except AnalysisError as e:
-                results.append(self._error_result(doc, e))
+                res = self._error_result(doc, e)
+                if len(self.executions) > before:      # the analyzer ran and failed: its cost is real and reported
+                    ex = self.executions[-1]
+                    res["usage"] = _usage(1, ex["seconds"], ex["operations"])
+                results.append(res)
         return self._response(results, warnings=[], dry_run=dry_run)
 
     @staticmethod

@@ -1,0 +1,14 @@
+{
+  "id": "provenance_mismatch",
+  "description": "a contract claiming non-OBSERVED provenance",
+  "mutations": [
+    {
+      "op": "set",
+      "path": "provenance",
+      "value": "INFERRED"
+    }
+  ],
+  "expect_problems": [
+    "provenance"
+  ]
+}

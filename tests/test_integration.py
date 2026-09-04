@@ -243,7 +243,9 @@ def test_cli_run_stdin_and_batch(media, tmp_path):
     assert r.stdout.count('"schema": "media-analysis/response@1"') == 1 and r.stderr == ""
     assert doc["status"] == "partial" and [x["status"] for x in doc["results"]] == ["ok", "error", "error"]
     assert doc["results"][1]["error_kind"] == "INVALID_INPUT" and doc["results"][2]["error_kind"] == "BUDGET_EXCEEDED"
-    assert doc["budget"]["budget"]["max_analysis_calls"] == 2 and doc["usage"]["analyzer_calls"] == 1 and r.returncode == 2
+    # the out-of-range stream request ran ffprobe before failing: that call is real and is reported and budgeted
+    assert doc["budget"]["budget"]["max_analysis_calls"] == 2 and doc["usage"]["analyzer_calls"] == 2 and r.returncode == 2
+    assert doc["results"][1]["usage"]["analyzer_calls"] == 1 and doc["results"][2]["usage"]["analyzer_calls"] == 0
     # invalid JSON on stdin -> still exactly one parseable response document, non-zero exit
     r = subprocess.run([sys.executable, "-m", "media_analysis.cli", "run", "-", "--json"], cwd=str(tmp_path), input="{not json",
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -291,3 +293,132 @@ def test_all_kinds_real_media(media, tmp_path):
     assert again["usage"]["analyzer_calls"] == 0 and again["usage"]["cache_hits"] == len(ANALYSIS_KINDS) and again["observations"] == doc["observations"]
     assert len(e.executions) == len(ANALYSIS_KINDS)
     assert {t["tool_id"] for t in skill_contract()["tools"]} == {ex["analyzer"] for ex in e.executions}
+
+
+def _run_stdin(doc, cwd, extra=()):
+    r = subprocess.run([sys.executable, "-m", "media_analysis.cli", "run", "-", "--json", *extra], cwd=str(cwd),
+                       input=doc if isinstance(doc, str) else json.dumps(doc), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    parsed = json.loads(r.stdout)                      # exactly one parseable document, always
+    assert r.stdout.count('"schema": "media-analysis/response@1"') == 1
+    return r, parsed
+
+
+INVALID_INPUTS = [
+    ("invalid_json", "{not json", None, "INVALID_INPUT"),
+    ("missing_asset", {"input": "{av}", "kind": "media_probe"}, "results", "INVALID_INPUT"),
+    ("missing_kind", {"asset_id": "a", "input": "{av}"}, "results", "INVALID_INPUT"),
+    ("unknown_kind", {"asset_id": "a", "input": "{av}", "kind": "speaker_detection"}, "results", "INVALID_INPUT"),
+    ("invalid_parameter", {"asset_id": "a", "input": "{av}", "kind": "silence", "parameters": {"threshold_db": 10}}, "results", "INVALID_INPUT"),
+    ("unknown_parameter", {"asset_id": "a", "input": "{av}", "kind": "silence", "parameters": {"gain": 1}}, "results", "INVALID_INPUT"),
+    ("path_traversal", {"asset_id": "a", "input": "{cwd}/../../{avname}", "kind": "media_probe"}, "results", "FILE_NOT_FOUND"),
+    ("nonexistent_file", {"asset_id": "a", "input": "{cwd}/missing.mp4", "kind": "media_probe"}, "results", "FILE_NOT_FOUND"),
+    ("unsupported_media", {"asset_id": "a", "input": "{text}", "kind": "media_probe"}, "results", "UNSUPPORTED_FORMAT"),
+    ("command_field", {"asset_id": "a", "input": "{av}", "kind": "media_probe", "command": "rm -rf /"}, "results", "INVALID_INPUT"),
+    ("executable_override", {"asset_id": "a", "input": "{av}", "kind": "media_probe", "ffmpeg": "/tmp/evil"}, "results", "INVALID_INPUT"),
+]
+
+
+@pytest.mark.parametrize("name,doc,where,code", INVALID_INPUTS, ids=[c[0] for c in INVALID_INPUTS])
+def test_invalid_input_is_a_parseable_error_response(media, tmp_path, name, doc, where, code):
+    text = tmp_path / "notmedia.txt"
+    text.write_text("hello")
+    if isinstance(doc, dict):
+        doc = json.loads(json.dumps(doc).replace("{av}", str(media["av"]).replace("\\", "\\\\")).replace("{cwd}", str(tmp_path).replace("\\", "\\\\"))
+                         .replace("{avname}", media["av"].name).replace("{text}", str(text).replace("\\", "\\\\")))
+    r, parsed = _run_stdin(doc, tmp_path)
+    assert r.returncode != 0 and parsed["status"] == "error" and parsed["observations"] == [] and r.stderr == ""
+    if where is None:
+        assert parsed["error_kind"] == code and parsed["results"] == []
+    else:
+        assert parsed["results"][0]["error_kind"] == code and parsed["results"][0]["status"] == "error"
+
+
+def test_absolute_and_relative_inputs(media, tmp_path):
+    """Absolute paths and paths relative to the process working directory both resolve; the observation records the
+    resolved absolute path and the content fingerprint, so the same file under two spellings has one identity."""
+    import shutil
+    local = tmp_path / "local.mp4"
+    shutil.copy(media["av"], local)
+    r1, d1 = _run_stdin({"asset_id": "a", "input": "local.mp4", "kind": "duration"}, tmp_path)
+    r2, d2 = _run_stdin({"asset_id": "a", "input": str(local), "kind": "duration"}, tmp_path)
+    o1, o2 = d1["observations"][0], d2["observations"][0]
+    assert d1["status"] == d2["status"] == "ok" and o1["id"] == o2["id"] and o1["asset"]["path"] == o2["asset"]["path"] == str(local.resolve())
+    r3, d3 = _run_stdin({"asset_id": "a", "input": str(local), "kind": "duration"}, tmp_path, extra=["--allowed-input", str(tmp_path / "elsewhere")])
+    assert d3["results"][0]["error_kind"] == "PATH_NOT_ALLOWED"
+
+
+def test_timeout_keeps_the_protocol(media, tmp_path):
+    """A timeout inside a batch: parseable response, ANALYZER_TIMEOUT for that request, the others still served,
+    no cache entry for the timed-out identity, no ffmpeg left behind."""
+    batch = {"requests": [{"asset_id": "a", "input": str(media["av"]), "kind": "duration"},
+                          {"asset_id": "a", "input": str(media["av"]), "kind": "integrity", "timeout": 0.001},
+                          {"asset_id": "a", "input": str(media["av"]), "kind": "audio_format"}]}
+    r, doc = _run_stdin(batch, tmp_path, extra=["--cache-dir", "c"])
+    assert doc["status"] == "partial" and [x["status"] for x in doc["results"]] == ["ok", "error", "ok"]
+    assert doc["results"][1]["error_kind"] == "ANALYZER_TIMEOUT" and r.returncode == 7 and r.stderr == ""
+    assert len(doc["observations"]) == 2 and [o["kind"] for o in doc["observations"]] == ["duration", "audio_format"]
+    entries = list((tmp_path / "c").rglob("*.json"))
+    assert len(entries) == 2 and all(json.loads(e.read_text())["metadata"]["kind"] != "integrity" for e in entries)
+    if Path("/proc").is_dir():
+        for pid in Path("/proc").iterdir():
+            if pid.name.isdigit():
+                try:
+                    cmd = (pid / "cmdline").read_bytes()
+                except OSError:
+                    continue
+                assert not (b"ffmpeg" in cmd and str(media["av"]).encode() in cmd)
+
+
+# ---- real media matrix: every kind on every fixture yields a contract-conformant ok or error result
+AUDIO_KINDS = {"audio_format", "silence", "loudness"}
+VIDEO_KINDS = {"video_format", "scene_detection"}
+
+
+def test_real_media_matrix(media, tmp_path):
+    from media_analysis.contract import ANALYSIS_KINDS, PARAMETER_SCHEMAS
+    from media_analysis.schemas import RESPONSE_SCHEMA, contract_refs, validate
+    refs = contract_refs(list(ANALYSIS_KINDS), PARAMETER_SCHEMAS)
+    e = engine(tmp_path, cache=True)
+    expectations = {
+        "av": {}, "multi": {}, "short": {}, "scenes": {k: "UNSUPPORTED_FORMAT" for k in AUDIO_KINDS},
+        "video_only": {k: "UNSUPPORTED_FORMAT" for k in AUDIO_KINDS},
+        "mono": {k: "UNSUPPORTED_FORMAT" for k in VIDEO_KINDS}, "stereo": {k: "UNSUPPORTED_FORMAT" for k in VIDEO_KINDS},
+        "silence": {k: "UNSUPPORTED_FORMAT" for k in VIDEO_KINDS}, "loud": {k: "UNSUPPORTED_FORMAT" for k in VIDEO_KINDS},
+        "corrupt": {},   # ffprobe still opens it; integrity reports FAIL as data, not as an error
+    }
+    for name, expected_errors in expectations.items():
+        doc = e.run({"requests": [{"asset_id": name, "input": str(media[name]), "kind": k} for k in ANALYSIS_KINDS]})
+        assert validate(doc, RESPONSE_SCHEMA, refs) == [], (name, validate(doc, RESPONSE_SCHEMA, refs))
+        for res in doc["results"]:
+            if res["kind"] in expected_errors:
+                assert res["status"] == "error" and res["error_kind"] == expected_errors[res["kind"]], (name, res["kind"], res.get("error"))
+            else:
+                assert res["status"] == "ok", (name, res["kind"], res.get("error"))
+                assert res["observation"]["asset_id"] == name and res["observation"]["kind"] == res["kind"]
+        assert doc["status"] == ("ok" if not expected_errors else "partial")
+    corrupt = e.run({"asset_id": "corrupt", "input": str(media["corrupt"]), "kind": "integrity"})["observations"][0]["data"]
+    assert corrupt["status"] == "FAIL"
+    # every ok result is now cached; errors are never cached, so the second pass costs exactly one analyzer call per
+    # error result (a failed analyzer run is reported as usage, not hidden)
+    before = len(e.executions)
+    errors = sum(len(v) for v in expectations.values())
+    for name, expected_errors in expectations.items():
+        again = e.run({"requests": [{"asset_id": name, "input": str(media[name]), "kind": k} for k in ANALYSIS_KINDS]})
+        assert again["usage"]["analyzer_calls"] == len(expected_errors) and again["usage"]["cache_hits"] == len(ANALYSIS_KINDS) - len(expected_errors)
+        for res in again["results"]:
+            assert res["usage"]["analyzer_calls"] == (1 if res["status"] == "error" else 0)
+    assert len(e.executions) == before + errors
+
+
+def test_deterministic_result_across_processes(media, tmp_path):
+    """Two separate processes, no cache: identical observation id, identity, data and asset fingerprint; only
+    observed_at / seconds (explicitly outside the identity) may differ."""
+    docs = []
+    for _ in range(2):
+        r, doc = _run_stdin({"requests": [{"asset_id": "a", "input": str(media["av"]), "kind": k} for k in ("silence", "loudness", "video_format", "timing")]}, tmp_path)
+        docs.append(doc)
+    for o1, o2 in zip(docs[0]["observations"], docs[1]["observations"]):
+        assert o1["id"] == o2["id"] and o1["analysis"]["identity"] == o2["analysis"]["identity"] and o1["data"] == o2["data"]
+        assert o1["asset"] == o2["asset"] and o1["source"] == o2["source"] and o1["analysis"]["parameters"] == o2["analysis"]["parameters"]
+    text = json.dumps(docs[0])
+    assert str(tmp_path / "c") not in text and "pid" not in text.lower()

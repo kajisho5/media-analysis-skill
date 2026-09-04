@@ -1,0 +1,14 @@
+{
+  "id": "schema_mismatch",
+  "description": "observation schema document differs (a field removed)",
+  "mutations": [
+    {
+      "op": "delete_schema_property",
+      "schema": "observation",
+      "property": "asset"
+    }
+  ],
+  "expect_problems": [
+    "schemas.observation: differs"
+  ]
+}

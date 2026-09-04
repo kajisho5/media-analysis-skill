@@ -82,10 +82,31 @@ changed, entry tampered or unreadable. It is a reuse cache only: no job state, n
 
 `Budget(max_analysis_calls, timeout, max_total_seconds)` is enforced by `BudgetTracker` per engine instance
 (per CLI invocation; a batch document's `budget` replaces it for that run). `Budget.from_dict` rejects any other
-name. Cache hits do not consume calls. The effective per-run timeout is the minimum of the request
+name. Cache hits do not consume calls; an analyzer run that fails (e.g. `UNSUPPORTED_FORMAT` after ffprobe ran)
+does, and the error result reports it in `usage`. `max_total_seconds` and `timeout` are analyzer wall-clock
+seconds; they have nothing to do with the media's duration. The effective per-run timeout is the minimum of the request
 timeout, the budget timeout and the remaining total seconds. Exceeding a limit raises `BUDGET_EXCEEDED` before the
 analyzer starts; a timeout kills the ffmpeg / ffprobe process group and raises `ANALYZER_TIMEOUT`. Budgets that this
 package cannot measure (storage, GPU time, API cost) do not exist here.
+
+## Memory and long media
+
+No analyzer reads the media into memory: the fingerprint is a chunked sha256, ffprobe / ffmpeg stream the file and
+write nothing. What is held in memory is their text output: the probe document (KBs), the `ebur128` summary
+(bytes), `silencedetect` lines (one per segment), `scdet` metadata (~100 bytes per frame; ~10 MB for an hour at
+30 fps) and the packet timestamp scan (`video_format`, `timing`, `integrity`: ~40 bytes per packet, parsed into
+one dict per packet, so an hour of video + audio is on the order of 100 MB of Python objects). Decode-based kinds
+(`integrity`, `loudness`, `silence`, `scene_detection`) take roughly real-time ÷ decoder speed; set `timeout` /
+`max_total_seconds` accordingly. Large-file optimisation is out of scope for 0.1.
+
+## Contract self-validation
+
+`contract_check.check_contract(doc)` compares a contract document with the implementation: skill id, version,
+schema versions, kinds, `kind_to_tool`, every ToolSpec (from the registry), capability names, execution /
+invocation flags, schemas, error and exit tables, cache / budget / identity sections. `contract --check FILE`
+exposes it (exit 0 = identical, 1 = drift, `status: ok | drift`), `doctor` runs it on the live document, and
+`tests/contract/cases/*.json` are drift fixtures expressed as *mutations* of the live contract (never a second copy)
+with the problems each must raise.
 
 ## Connecting to video-production-agent
 

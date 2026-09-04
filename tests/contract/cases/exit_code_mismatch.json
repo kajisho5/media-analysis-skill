@@ -1,0 +1,17 @@
+{
+  "id": "exit_code_mismatch",
+  "description": "exit code table drifted",
+  "mutations": [
+    {
+      "op": "set_map",
+      "path": "errors",
+      "key": "exit_codes",
+      "value": {
+        "INVALID_INPUT": 1
+      }
+    }
+  ],
+  "expect_problems": [
+    "errors.exit_codes"
+  ]
+}

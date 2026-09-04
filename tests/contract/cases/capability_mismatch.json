@@ -1,0 +1,18 @@
+{
+  "id": "capability_mismatch",
+  "description": "a tool declaring different capabilities than it needs",
+  "mutations": [
+    {
+      "op": "set_tool_field",
+      "tool_id": "media-analysis/loudness",
+      "field": "required_capabilities",
+      "value": [
+        "ffprobe",
+        "ffmpeg"
+      ]
+    }
+  ],
+  "expect_problems": [
+    "tools[media-analysis/loudness].required_capabilities"
+  ]
+}

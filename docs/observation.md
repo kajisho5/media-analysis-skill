@@ -75,6 +75,24 @@ A failed result: `"status": "error"`, `"error": {"code", "message", "details"}`,
 `output_policy.round` (default 3) rounds floats in the returned document; it does not affect the identity or the
 cached Observation.
 
+## Confidence and evidence
+
+There is no `confidence` field in any Observation, by design. Every value is a measurement against explicit
+parameters recorded next to it (`analysis.parameters`); the fields that look like scores are measurements too:
+`cut_score` (scdet score of the frame), `probe_score` (ffprobe container detection score), `integrity.status`
+(decoder printed error lines or not). None of them is a probability that the agent should act, and the Skill never
+assigns one. Evidence an agent can verify later: `asset.fingerprint` (sha256 of the content), `asset.path`,
+`analysis.analyzer` + `analysis.analyzer_version` (== `source`), `analysis.parameters`, `analysis.identity`,
+`observed_at`, and in the result `cache.status` (a `hit` was measured at `observed_at`, not now) and
+`usage.operations` (which executables ran, for what).
+
+## Determinism
+
+`id`, `analysis.identity`, `data` and `asset.fingerprint` depend only on the file content, the analyzer, its version,
+the kind and the effective parameters. `observed_at`, `analysis.seconds`, `usage.seconds` and `asset.path` are
+outside the identity (time, wall clock and location of the copy). Nothing derived from a process id, a temporary
+path or the current time enters `data` or the identity (tested across processes).
+
 ## Observation vs Inference
 
 An Observation states what a tool measured. It never says "silence is unwanted", "loudness is off target", "this is

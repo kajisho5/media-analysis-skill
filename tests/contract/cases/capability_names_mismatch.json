@@ -1,0 +1,18 @@
+{
+  "id": "capability_names_mismatch",
+  "description": "package-level capability vocabulary drifted",
+  "mutations": [
+    {
+      "op": "set",
+      "path": "capability_names",
+      "value": [
+        "ffmpeg",
+        "ffprobe",
+        "gpu:cuda"
+      ]
+    }
+  ],
+  "expect_problems": [
+    "capability_names"
+  ]
+}
