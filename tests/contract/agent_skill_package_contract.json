@@ -1,0 +1,29 @@
+{
+  "source": "kajisho5/video-production-agent src/video_agent/skills/contract.py (PR #7 head 9c2ae4a) — SkillPackage.validate() rules and ToolSpec fields",
+  "note": "Rules of the consumer, copied once; the media-analysis contract under test is generated from the implementation, never hand-written here.",
+  "skill_package": {
+    "required": ["skill_id", "name", "version", "description", "capabilities", "tools"],
+    "optional": ["repository", "role"],
+    "rules": {
+      "skill_id_no_slash": "skill_id must be a non-empty prefix without '/'",
+      "at_least_one_tool": "a package must declare at least one tool",
+      "tool_skill_id_matches": "every tool.skill_id equals the package skill_id",
+      "tool_id_format": "tool_id must be '<skill_id>/<name>' with exactly one '/'",
+      "tool_ids_unique": "no duplicate tool ids"
+    }
+  },
+  "tool_spec": {
+    "required": ["tool_id", "skill_id", "version", "description", "required_capabilities", "inputs", "produces_output", "deterministic", "result_keys"],
+    "kind_rule": "kind is 'transform' when produces_output else 'measure'; media-analysis tools must all be 'measure'"
+  },
+  "observation": {
+    "fields": ["kind", "asset_id", "source", "data", "id", "observed_at"],
+    "source_rule": "'@' in source and not source.startswith('ai'); format '<tool id>@<version>' where tool id is '<skill_id>/<name>'",
+    "provenance_rule": "observations are OBSERVED tool measurements; AI output must carry AI_GENERATED and is never an observation"
+  },
+  "capability_names": {
+    "known": ["ffmpeg", "ffprobe"],
+    "filter_prefix": "filter:",
+    "rule": "capability names are resolver names: 'ffmpeg', 'ffprobe', 'filter:<ffmpeg filter>', 'encoder:<name>'"
+  }
+}

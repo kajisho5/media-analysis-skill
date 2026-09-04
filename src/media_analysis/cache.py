@@ -10,7 +10,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from . import VERSION
 from .canonical import canonical_json, stable_hash
@@ -32,11 +32,12 @@ class ObservationCache:
             raise AnalysisError("CACHE_INVALID", "cache key must be a hex digest")
         return self.dir / key[:2] / f"{key}.json"
 
-    def get(self, key: str, *, asset_fingerprint: str, analyzer: str, analyzer_version: str, kind: str, parameters: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def get(self, key: str, *, asset_fingerprint: str, analyzer: str, analyzer_version: str, kind: str, parameters: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], str]:
+        """(observation, status) with status hit | miss | invalid. An invalid entry is removed and counts as a miss."""
         path = self._path(key)
         if not path.exists():
             self.misses += 1
-            return None
+            return None, "miss"
         try:
             entry = json.loads(path.read_text(encoding="utf-8"))
             meta = entry["metadata"]
@@ -53,9 +54,9 @@ class ObservationCache:
                 path.unlink()
             except OSError:
                 pass
-            return None
+            return None, "invalid"
         self.hits += 1
-        return obs
+        return obs, "hit"
 
     def put(self, key: str, observation: Dict[str, Any], *, asset_fingerprint: str, analyzer: str, analyzer_version: str, kind: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         path = self._path(key)

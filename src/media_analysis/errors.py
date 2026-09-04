@@ -16,6 +16,7 @@ ERROR_CODES = (
     "BUDGET_EXCEEDED",      # analysis budget exhausted before the analyzer ran
     "CACHE_INVALID",        # cache entry unreadable or inconsistent
     "VERIFICATION_FAILED",  # observation failed the final verification (asset / kind / source / schema)
+    "CACHE_MISS",           # cache_policy "only" and no valid cache entry (no analyzer is run)
 )
 
 # process exit codes for the CLI (stable part of the contract)

@@ -62,3 +62,37 @@
 - Values in `data` named like timestamps must lie in `[0, duration + 1 s]`. `silencedetect` can report a trailing
   silence end slightly beyond the declared duration (codec padding) and that value is kept as measured; the 1 s
   tolerance is for verification, not a correction.
+
+## ADR-013 One response document for every `--json` invocation
+- Context: PR #1 printed a bare result (or `{"results": [...]}`) and a bare `{"error": ...}`; an adapter had to
+  branch on shape. Phase 2 PR 2 fixes the machine interface: `run`, `analyze` and `probe` all print exactly one
+  `media-analysis/response@1` document with `status` ok / partial / error, `results[]`, `observations[]`, `usage`,
+  `budget`; per-request failures are error results and do not abort a batch. Human output is unchanged.
+- `run` is the canonical invocation (`media-analysis run - --json`, request on stdin); `analyze` / `probe` are
+  conveniences that build the same request document.
+
+## ADR-014 Cache policy is a request field with five result statuses
+- `cache_policy` `use` / `bypass` / `only`; result `cache.status` `hit` / `miss` / `invalid` / `bypass` / `disabled`.
+  `only` never runs an analyzer (`CACHE_MISS`, exit 13) so an adapter can ask "what do we already know" at zero
+  cost. `invalid` is reported (not folded into `miss`) so a tampered or stale entry is visible in provenance.
+
+## ADR-015 Batch budget replaces the CLI budget; unknown budget names are errors
+- A batch document may carry `budget`; only `max_analysis_calls`, `timeout`, `max_total_seconds` exist. Any other
+  name (`max_bytes_scanned`, GPU, cost, storage) is `INVALID_INPUT` for the whole document rather than silently
+  ignored, so an agent cannot believe a budget is enforced when it is not.
+
+## ADR-016 Schemas are published, minimal validator is in-tree
+- The request / batch / result / response / observation JSON Schemas live in `schemas.py` and are printed by
+  `contract --json`. A ~60-line validator covering the subset used is included instead of a `jsonschema`
+  dependency (the package stays standard-library only); tests and contract evals validate real responses with it.
+
+## ADR-017 Consumer rules are a fixture, the contract is generated
+- `tests/contract/agent_skill_package_contract.json` records the video-production-agent rules (SkillPackage /
+  ToolSpec / Observation / capability names) copied once from its `skills/contract.py`. The media-analysis contract
+  under test is always generated from the registry (`tool_spec(analyzer)`), never hand-written, so the two cannot
+  drift apart unnoticed; the agent repository is not installed or imported.
+
+## ADR-018 CI covers Linux 3.9 / 3.11, Windows and macOS with a real FFmpeg
+- Each platform installs FFmpeg its own way (apt / choco / brew). Nothing is skipped on any platform; the one
+  platform-conditional piece of test code tolerates a refused symlink creation on Windows (privilege), while every
+  other path-policy case still runs there.

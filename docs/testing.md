@@ -2,12 +2,14 @@
 
 ```text
 pip install -e . pytest
-python -m pytest -q          # 45 tests: unit + integration + evals
-python evals/run.py          # 9 eval cases with expected values and tolerances
+python -m pytest -q               # 59 tests: unit + contract + integration + evals
+python evals/run.py               # 9 measurement eval cases with expected values and tolerances
+python evals/contract_evals.py    # 10 contract eval cases
 ```
 
 FFmpeg is required. Integration tests and evals are **not skipped** when it is missing; the session fails, so a
-green run always means the real ffmpeg / ffprobe were exercised.
+green run always means the real ffmpeg / ffprobe were exercised. CI (`.github/workflows/tests.yml`) runs the whole
+suite on Linux (Python 3.9, 3.11), Windows (choco ffmpeg) and macOS (brew ffmpeg).
 
 ## Fixtures (`tests/fixtures/generate.py`)
 
@@ -38,6 +40,16 @@ subprocess) · budget (calls, total seconds, cache hits free) · unsupported ana
 validates · path policy (roots, symlink escape, directories, NUL, workspace writes, argv shape) · no shell in source ·
 secret leakage (env value, secret-looking key, child environment) · command / argv leakage · error model.
 
+## Contract tests (`tests/test_contract.py`)
+
+schema validator · contract JSON self-consistency (sections, schema versions, error / exit tables, budget / cache
+vocab) · tools and kinds derived from the registry (`tool_spec(analyzer)` equality, coverage of all 10 kinds,
+capability names) · consumer rules from `tests/contract/agent_skill_package_contract.json` (video-production-agent
+SkillPackage / ToolSpec / Observation / capability-name rules) · request schema ↔ `AnalysisRequest` agreement (incl.
+`strategy` / `budget` / `cache_policy` rejection) · response / result / observation schema roundtrip through
+`engine.run` (ok, partial, error, dry-run, rejected document) · exit code table · process-group kill of a grandchild
+· executable path not configurable.
+
 ## Integration tests (`tests/test_integration.py`, real ffmpeg)
 
 MP4 probe · video stream analysis (CFR, frame count, short file) · audio stream analysis (stereo / mono) · silence
@@ -45,11 +57,22 @@ MP4 probe · video stream analysis (CFR, frame count, short file) · audio strea
 integrity (PASS, FAIL on corruption, video-only, audio-only) · multiple streams (ordinals, per-stream video / audio /
 loudness, out-of-range ordinal) · no-audio video · scene detection · timing / duration · **cache hit skips the
 analyzer** (execution log: first run executed ffmpeg, second run executed nothing, a new engine reuses the disk cache)
-· budget and timeout with real processes · determinism across runs · CLI smoke (doctor, probe, analyze multi-kind,
-cache hit, dry-run JSON / text, error on stdout-JSON vs stderr, budget error, `run` with request file, argv rejection,
-`--allowed-input`, contract).
+· cache policies (`bypass`, `only` → `CACHE_MISS`) · budget and timeout with real processes · **timeout leaves no
+ffmpeg process and no cache entry** (`/proc` scan on Linux) · determinism across runs · **all 10 kinds on real
+multi-stream media, response validated against the published schemas, second batch entirely from cache** · CLI smoke
+(doctor, probe, analyze multi-kind, cache hit, dry-run JSON / text, error inside the JSON document vs stderr, partial
+batch with budget error, `run` with request file, argv rejection, `--allowed-input`, contract) · `run -` over stdin
+with a batch and budget (partial status, per-result errors, exactly one stdout document), invalid JSON on stdin,
+unknown budget field.
 
-## Evals (`evals/cases/*.json`, `evals/run.py`, `tests/test_evals.py`)
+## Contract evals (`evals/contract_evals.py`, `tests/test_evals.py`)
+
+C01 contract JSON valid · C02 declared tools exist · C03 declared kinds exist · C04 observation schema valid ·
+C05 request / response roundtrip · C06 unsupported field rejection (request, parameter, output_policy, batch budget) ·
+C07 malicious command rejected · C08 path traversal rejected (input and cache dir) · C09 credential leakage rejected ·
+C10 cache hit produces the identical observation with zero analyzer calls (real ffmpeg).
+
+## Measurement evals (`evals/cases/*.json`, `evals/run.py`, `tests/test_evals.py`)
 
 Each case names its fixture, kind, parameters, the derivation of the expected values and a list of expectations
 (`eq`, `approx` with tolerance, `gte`, `lte`, `startswith`) on paths in the Observation. Cases: known media probe,

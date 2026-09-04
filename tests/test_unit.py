@@ -301,13 +301,20 @@ def test_cache_hit_and_miss(tmp_path):
     f.write_bytes(b"media")
     eng, an = make_engine(tmp_path)
     r1 = eng.analyze(req(f))
-    assert r1["cache"] == "miss" and an.calls == 1 and eng.cache.stats()["misses"] == 1
+    assert r1["cache"]["status"] == "miss" and an.calls == 1 and eng.cache.stats()["misses"] == 1 and r1["usage"]["analyzer_calls"] == 1
     r2 = eng.analyze(req(f))
-    assert r2["cache"] == "hit" and an.calls == 1 and r2["observation"] == r1["observation"]
+    assert r2["cache"]["status"] == "hit" and an.calls == 1 and r2["observation"] == r1["observation"] and r2["usage"]["analyzer_calls"] == 0
     r3 = eng.analyze(req(f, asset_id="asset-2"))          # same file under another label: reuse, relabel
-    assert r3["cache"] == "hit" and r3["observation"]["asset_id"] == "asset-2" and an.calls == 1
+    assert r3["cache"]["status"] == "hit" and r3["observation"]["asset_id"] == "asset-2" and an.calls == 1
+    assert eng.analyze(req(f, cache_policy="bypass"))["cache"]["status"] == "bypass" and an.calls == 2
+    assert eng.analyze(req(f, cache_policy="only"))["cache"]["status"] == "hit" and an.calls == 2
     eng2, an2 = make_engine(tmp_path, cache=False)
-    assert eng2.analyze(req(f))["cache"] == "disabled" and an2.calls == 1
+    assert eng2.analyze(req(f))["cache"]["status"] == "disabled" and an2.calls == 1
+    with pytest.raises(AnalysisError) as e:
+        eng2.analyze(req(f, cache_policy="only"))
+    assert e.value.code == "CACHE_MISS" and an2.calls == 1
+    with pytest.raises(AnalysisError):
+        eng2.analyze(req(f, cache_policy="sometimes"))
 
 
 def test_cache_invalidation_asset_version_parameters(tmp_path):
@@ -316,31 +323,34 @@ def test_cache_invalidation_asset_version_parameters(tmp_path):
     eng, an = make_engine(tmp_path)
     eng.analyze(req(f))
     f.write_bytes(b"media changed")
-    assert eng.analyze(req(f))["cache"] == "miss" and an.calls == 2
+    assert eng.analyze(req(f))["cache"]["status"] == "miss" and an.calls == 2
     an.version = "0.1.1"
-    assert eng.analyze(req(f))["cache"] == "miss" and an.calls == 3
-    assert eng.analyze(req(f))["cache"] == "hit" and an.calls == 3
+    assert eng.analyze(req(f))["cache"]["status"] == "miss" and an.calls == 3
+    assert eng.analyze(req(f))["cache"]["status"] == "hit" and an.calls == 3
     # parameter invalidation with a parameterised kind
     class Sil(CountingAnalyzer):
         id, supported_kinds, required_capabilities = "silence", ("silence",), ("ffprobe",)
     eng2, an2 = make_engine(tmp_path, analyzer=Sil())
     eng2.analyze(req(f, kind="silence", parameters={"threshold_db": -40}))
-    assert eng2.analyze(req(f, kind="silence", parameters={"threshold_db": -40.0}))["cache"] == "hit"
-    assert eng2.analyze(req(f, kind="silence", parameters={"threshold_db": -30}))["cache"] == "miss" and an2.calls == 2
+    assert eng2.analyze(req(f, kind="silence", parameters={"threshold_db": -40.0}))["cache"]["status"] == "hit"
+    assert eng2.analyze(req(f, kind="silence", parameters={"threshold_db": -30}))["cache"]["status"] == "miss" and an2.calls == 2
 
 
 def test_cache_corrupt_entry_is_a_miss(tmp_path):
     f = tmp_path / "a.bin"
     f.write_bytes(b"media")
     eng, an = make_engine(tmp_path)
-    key = eng.analyze(req(f))["cache_key"]
+    key = eng.analyze(req(f))["cache"]["key"]
     entry = tmp_path / "cache" / key[:2] / f"{key}.json"
     doc = json.loads(entry.read_text())
     doc["observation"]["data"]["container"]["duration"] = 999   # tampered: result hash no longer matches
     entry.write_text(json.dumps(doc))
-    assert eng.analyze(req(f))["cache"] == "miss" and an.calls == 2 and eng.cache.stats()["invalid"] == 1
+    assert eng.analyze(req(f))["cache"]["status"] == "invalid" and an.calls == 2 and eng.cache.stats()["invalid"] == 1
     entry.write_text("{not json")
-    assert eng.analyze(req(f))["cache"] == "miss" and an.calls == 3
+    assert eng.analyze(req(f))["cache"]["status"] == "invalid" and an.calls == 3
+    with pytest.raises(AnalysisError) as e:
+        eng.cache.get("not-hex", asset_fingerprint="", analyzer="", analyzer_version="", kind="", parameters={})
+    assert e.value.code == "CACHE_INVALID"
 
 
 # ---- 22-23 timeout / budget
@@ -363,7 +373,7 @@ def test_budget_exceeded(tmp_path):
     f.write_bytes(b"media")
     eng, an = make_engine(tmp_path, budget=Budget(max_analysis_calls=1))
     eng.analyze(req(f))
-    assert eng.analyze(req(f))["cache"] == "hit"                       # cache hits are free
+    assert eng.analyze(req(f))["cache"]["status"] == "hit"             # cache hits are free
     f.write_bytes(b"other")
     with pytest.raises(AnalysisError) as e:
         eng.analyze(req(f))
@@ -396,14 +406,16 @@ def test_dry_run_runs_nothing(tmp_path):
     f = tmp_path / "a.bin"
     f.write_bytes(b"media")
     eng, an = make_engine(tmp_path)
-    plan = eng.plan(req(f))
+    res = eng.plan(req(f))
+    plan = res["plan"]
+    assert res["status"] == "ok" and res["usage"]["analyzer_calls"] == 0 and "observation" not in res
     assert plan["dry_run"] is True and plan["executable"] is True and plan["operations"] == [{"executable": "ffprobe", "purpose": "fake"}]
     assert an.calls == 0 and eng.tracker.calls == 0 and not (tmp_path / "cache").exists()
     with pytest.raises(AnalysisError) as e:      # validation still happens
         eng.plan(req(tmp_path / "missing.mp4"))
     assert e.value.code == "FILE_NOT_FOUND"
     eng.caps = fake_caps()
-    assert eng.plan(req(f))["executable"] is False
+    assert eng.plan(req(f))["plan"]["executable"] is False
 
 
 # ---- 26 path security
@@ -415,11 +427,16 @@ def test_path_security(tmp_path):
     outside = tmp_path / "out.bin"
     outside.write_bytes(b"x")
     link = root / "link.bin"
-    link.symlink_to(outside)
+    cases = [(str(outside), "PATH_NOT_ALLOWED"), (str(root), "FILE_NOT_FOUND"), (str(root / "nope"), "FILE_NOT_FOUND"),
+             (str(root / ".." / "out.bin"), "PATH_NOT_ALLOWED"), ("", "INVALID_INPUT"), ("a\x00b", "INVALID_INPUT")]
+    try:
+        link.symlink_to(outside)
+        cases.append((str(link), "PATH_NOT_ALLOWED"))     # a symlink inside the root pointing outside is refused
+    except OSError:
+        pass                                              # symlinks need privileges on Windows; the other cases still run
     pol = PathPolicy(workspace=str(root), allowed_input_roots=[str(root)])
     assert pol.resolve_input(str(inside)) == inside.resolve()
-    for p, code in [(str(outside), "PATH_NOT_ALLOWED"), (str(link), "PATH_NOT_ALLOWED"), (str(root), "FILE_NOT_FOUND"), (str(root / "nope"), "FILE_NOT_FOUND"),
-                    ("", "INVALID_INPUT"), ("a\x00b", "INVALID_INPUT")]:
+    for p, code in cases:
         with pytest.raises(AnalysisError) as e:
             pol.resolve_input(p)
         assert e.value.code == code, p
@@ -484,6 +501,7 @@ def test_command_argv_leakage(tmp_path):
 
 def test_error_model():
     assert len(set(EXIT_CODES.values())) == len(ERROR_CODES) and min(EXIT_CODES.values()) >= 2
+    assert EXIT_CODES["INVALID_INPUT"] == 2 and EXIT_CODES["FILE_NOT_FOUND"] == 3 and EXIT_CODES["BUDGET_EXCEEDED"] == 10 and EXIT_CODES["CACHE_MISS"] == 13
     e = AnalysisError("FILE_NOT_FOUND", "x", {"path": "/p"})
     assert e.to_dict() == {"code": "FILE_NOT_FOUND", "message": "x", "details": {"path": "/p"}}
     with pytest.raises(ValueError):

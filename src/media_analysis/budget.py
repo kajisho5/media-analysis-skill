@@ -28,6 +28,18 @@ class Budget:
             if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0):
                 raise AnalysisError("INVALID_INPUT", f"budget.{name} must be a positive number")
 
+    SUPPORTED = ("max_analysis_calls", "timeout", "max_total_seconds")
+
+    @classmethod
+    def from_dict(cls, d: Any, default_timeout: Optional[float] = 600.0) -> "Budget":
+        """Strict: unknown budget names (storage, GPU, cost, bytes ...) are rejected, never silently accepted."""
+        if not isinstance(d, dict):
+            raise AnalysisError("INVALID_INPUT", "budget must be an object")
+        unknown = [k for k in d if k not in cls.SUPPORTED]
+        if unknown:
+            raise AnalysisError("INVALID_INPUT", "unsupported budget fields", {"fields": unknown, "supported": list(cls.SUPPORTED)})
+        return cls(max_analysis_calls=d.get("max_analysis_calls"), timeout=d.get("timeout", default_timeout), max_total_seconds=d.get("max_total_seconds"))
+
     def to_dict(self) -> Dict[str, Any]:
         return {"max_analysis_calls": self.max_analysis_calls, "timeout": self.timeout, "max_total_seconds": self.max_total_seconds}
 

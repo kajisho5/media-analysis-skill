@@ -64,12 +64,14 @@ def _kill_group(proc: subprocess.Popen) -> None:
         pass
 
 
-_ENV_KEEP = ("PATH", "HOME", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "SYSTEMROOT", "TERM")
+_ENV_KEEP = ("PATH", "HOME", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "TERM",
+             "SYSTEMROOT", "SYSTEMDRIVE", "PATHEXT", "COMSPEC", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "PROGRAMDATA")
 
 
 def _clean_env() -> dict:
-    """Child processes only see what they need to run; secrets in the parent environment are not inherited."""
-    return {k: v for k, v in os.environ.items() if k in _ENV_KEEP}
+    """Child processes only see what they need to run (PATH, home / temp / locale, Windows system variables);
+    secrets in the parent environment are not inherited. Comparison is case-insensitive (Windows)."""
+    return {k: v for k, v in os.environ.items() if k.upper() in _ENV_KEEP}
 
 
 FF_INPUT_PREFIX = ["-hide_banner", "-nostdin", "-protocol_whitelist", "file"]

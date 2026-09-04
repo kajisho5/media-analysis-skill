@@ -12,3 +12,13 @@ def test_evals_pass(media):
     failed = [r for r in results if not r["ok"]]
     assert len(results) >= 6
     assert not failed, [(r["id"], [c for c in r["checks"] if not c["ok"]], r.get("error")) for r in failed]
+
+
+import contract_evals  # noqa: E402
+
+
+def test_contract_evals_pass(media):
+    results = contract_evals.run_all()
+    failed = [r for r in results if not r["ok"]]
+    assert len(results) >= 6
+    assert not failed, [(r["id"], [c for c in r["checks"] if not c["ok"]], r.get("error")) for r in failed]

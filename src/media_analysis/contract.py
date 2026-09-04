@@ -15,7 +15,9 @@ from typing import Any, Dict, List, Optional
 
 from . import SKILL_ID, VERSION
 from .canonical import stable_hash
-from .errors import AnalysisError
+from .errors import ERROR_CODES, EXIT_CODES, AnalysisError
+from .schemas import (BATCH_SCHEMA, CACHE_POLICIES, CACHE_STATUSES, OBSERVATION_SCHEMA, OBSERVATION_SCHEMA_VERSION, REQUEST_SCHEMA_VERSION,
+                      RESPONSE_SCHEMA, RESPONSE_SCHEMA_VERSION, RESULT_SCHEMA, request_schema)
 
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 SOURCE_RE = re.compile(r"^media-analysis/[a-z]+@\d+\.\d+\.\d+$")
@@ -98,27 +100,66 @@ def source_for(tool: str, version: str = VERSION) -> str:
     return f"{tool_id(tool)}@{version}"
 
 
-def skill_contract() -> Dict[str, Any]:
-    """Machine-readable Skill contract (`media-analysis contract`). Mirrors video-production-agent SkillPackage /
-    ToolSpec fields so an adapter can map it one-to-one."""
-    tools = []
-    for tool in sorted(set(KIND_TO_TOOL.values())):
-        kinds = [k for k, t in KIND_TO_TOOL.items() if t == tool]
-        tools.append({
-            "tool_id": tool_id(tool), "skill_id": SKILL_ID, "version": VERSION, "description": TOOL_DESCRIPTIONS[tool],
-            "required_capabilities": list(TOOL_CAPABILITIES[tool]), "inputs": ["input"], "produces_output": False,
-            "deterministic": True, "kinds": kinds, "parameters": {k: PARAMETER_SCHEMAS[k] for k in kinds},
-            "result_keys": ["observation"],
-        })
+def tool_spec(analyzer: Any) -> Dict[str, Any]:
+    """Machine-readable ToolSpec derived from an analyzer instance (never from a hand-written table).
+    Field names follow video-production-agent ToolSpec where they overlap (tool_id, skill_id, version, description,
+    required_capabilities, inputs, produces_output, deterministic, result_keys)."""
+    kinds = list(analyzer.supported_kinds)
     return {
+        "tool_id": tool_id(analyzer.id), "skill_id": SKILL_ID, "version": analyzer.version, "description": TOOL_DESCRIPTIONS[analyzer.id],
+        "required_capabilities": list(analyzer.required_capabilities),
+        "inputs": ["input"], "input_type": "media file path (one file per request)",
+        "produces_output": False, "deterministic": True, "writes_media": False,
+        "result_keys": ["observation"],
+        "kinds": kinds, "output_observation_kinds": kinds,
+        "parameters": {k: PARAMETER_SCHEMAS[k] for k in kinds},
+        "supports": {"timeout": True, "cache": True, "dry_run": True},
+        "provenance": "OBSERVED",
+    }
+
+
+def skill_contract() -> Dict[str, Any]:
+    """Machine-readable Skill contract (`media-analysis contract --json`). Tools are derived from the analyzer
+    registry so the contract cannot declare a tool or kind that is not implemented; the registry itself refuses to
+    start if it disagrees with KIND_TO_TOOL / TOOL_CAPABILITIES."""
+    from .registry import default_registry  # local import: registry depends on this module
+    analyzers = default_registry().all()
+    tools = [tool_spec(a) for a in analyzers]
+    kinds = list(ANALYSIS_KINDS)
+    return {
+        "schema": "media-analysis/contract@1",
         "skill_id": SKILL_ID, "name": "media-analysis", "package": "media-analysis-skill", "version": VERSION,
         "description": "Deterministic media observation / analysis. Measures facts about media files; never interprets, decides or edits.",
         "role": "observation / analysis",
+        "repository": "kajisho5/media-analysis-skill",
         "capabilities": ["ffprobe"],   # the whole package needs ffprobe; ffmpeg + filters are per tool
+        "capability_names": sorted({c for a in analyzers for c in a.required_capabilities}),
         "tools": tools,
-        "analysis_kinds": list(ANALYSIS_KINDS),
+        "analysis_kinds": kinds,
+        "kind_to_tool": {k: tool_id(t) for k, t in KIND_TO_TOOL.items()},
+        "execution": {
+            "mode": "local_subprocess",
+            "canonical_invocation": ["media-analysis", "run", "<request.json | ->", "--json"],
+            "stdin": "AnalysisRequest JSON when the request argument is '-'",
+            "stdout": "exactly one response document (response schema) when --json is given",
+            "stderr": "diagnostics only; never part of the contract",
+            "executables": ["ffprobe", "ffmpeg"],
+            "executable_resolution": "PATH lookup only; not configurable through the request or the CLI",
+            "media_processing": False, "network": False, "ai": False,
+        },
         "observation_source_format": "media-analysis/<tool>@<version>",
-        "schema_version": "1",
+        "provenance": "OBSERVED",
+        "schema_versions": {"contract": "1", "request": REQUEST_SCHEMA_VERSION, "response": RESPONSE_SCHEMA_VERSION, "observation": OBSERVATION_SCHEMA_VERSION},
+        "schemas": {"request": request_schema(kinds, PARAMETER_SCHEMAS), "batch": BATCH_SCHEMA, "result": RESULT_SCHEMA,
+                    "response": RESPONSE_SCHEMA, "observation": OBSERVATION_SCHEMA},
+        "cache": {"policies": list(CACHE_POLICIES), "statuses": list(CACHE_STATUSES),
+                  "key": ["asset_fingerprint(sha256 of content)", "analyzer", "analyzer_version", "kind", "effective_parameters(canonical JSON)"],
+                  "hit_runs_analyzer": False},
+        "budget": {"supported": ["max_analysis_calls", "timeout", "max_total_seconds"], "unknown_fields": "INVALID_INPUT",
+                   "exceeded": "BUDGET_EXCEEDED, no observation, no analyzer process"},
+        "identity": {"analysis_identity": ["asset_fingerprint", "analyzer", "analyzer_version", "kind", "effective_parameters"], "canonical_json": True,
+                     "observation_id": "obs_<identity[:16]>", "derived_analysis_id": "analysis-<identity[:16]>"},
+        "errors": {"codes": list(ERROR_CODES), "exit_codes": dict(EXIT_CODES), "success_exit_code": 0},
     }
 
 
@@ -132,8 +173,9 @@ class AnalysisRequest:
     analysis_id: Optional[str] = None
     timeout: Optional[float] = None
     output_policy: Dict[str, Any] = field(default_factory=dict)
+    cache_policy: str = "use"
 
-    ALLOWED_KEYS = ("analysis_id", "asset_id", "input", "kind", "parameters", "timeout", "output_policy")
+    ALLOWED_KEYS = ("analysis_id", "asset_id", "input", "kind", "parameters", "timeout", "output_policy", "cache_policy")
     FORBIDDEN_KEYS = ("command", "argv", "args", "shell", "cmd", "exec")
 
     @classmethod
@@ -150,7 +192,8 @@ class AnalysisRequest:
             if k not in d:
                 raise AnalysisError("INVALID_INPUT", f"request field {k!r} is required")
         req = cls(asset_id=d["asset_id"], input=d["input"], kind=d["kind"], parameters=d.get("parameters") or {},
-                  analysis_id=d.get("analysis_id"), timeout=d.get("timeout"), output_policy=d.get("output_policy") or {})
+                  analysis_id=d.get("analysis_id"), timeout=d.get("timeout"), output_policy=d.get("output_policy") or {},
+                  cache_policy=d.get("cache_policy", "use"))
         req.validate()
         return req
 
@@ -179,6 +222,8 @@ class AnalysisRequest:
         if isinstance(rnd, bool) or not isinstance(rnd, int) or not (0 <= rnd <= 9):
             raise AnalysisError("INVALID_INPUT", "output_policy.round must be an integer in [0, 9]")
         self.output_policy = {"round": rnd}
+        if self.cache_policy not in CACHE_POLICIES:
+            raise AnalysisError("INVALID_INPUT", f"cache_policy must be one of {', '.join(CACHE_POLICIES)}", {"cache_policy": self.cache_policy})
 
     @property
     def tool(self) -> str:
@@ -186,7 +231,7 @@ class AnalysisRequest:
 
     def to_dict(self) -> Dict[str, Any]:
         return {"analysis_id": self.analysis_id, "asset_id": self.asset_id, "input": self.input, "kind": self.kind,
-                "parameters": dict(self.parameters), "timeout": self.timeout, "output_policy": dict(self.output_policy)}
+                "parameters": dict(self.parameters), "timeout": self.timeout, "output_policy": dict(self.output_policy), "cache_policy": self.cache_policy}
 
 
 def validate_parameters(kind: str, params: Dict[str, Any]) -> Dict[str, Any]:

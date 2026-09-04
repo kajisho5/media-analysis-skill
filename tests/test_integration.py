@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -66,7 +67,7 @@ def test_silence_analysis(media, tmp_path):
     e = engine(tmp_path)
     a = e.analyze({"asset_id": "asset-1", "input": str(media["av"]), "kind": "silence", "parameters": {"threshold_db": -50}})
     b = e.analyze({"asset_id": "asset-1", "input": str(media["av"]), "kind": "silence", "parameters": {"threshold_db": -30}})
-    assert a["cache_key"] != b["cache_key"] and a["observation"]["analysis_id"] != b["observation"]["analysis_id"]
+    assert a["cache"]["key"] != b["cache"]["key"] and a["observation"]["analysis_id"] != b["observation"]["analysis_id"]
 
 
 def test_loudness_analysis(media, tmp_path):
@@ -146,13 +147,21 @@ def test_timing_and_duration(media, tmp_path):
 def test_cache_hit_skips_analyzer(media, tmp_path):
     e = engine(tmp_path, cache=True)
     first = e.analyze({"asset_id": "asset-1", "input": str(media["av"]), "kind": "loudness"})
-    assert first["cache"] == "miss" and len(e.executions) == 1 and e.executions[0]["operations"][1]["executable"] == "ffmpeg"
+    assert first["cache"]["status"] == "miss" and len(e.executions) == 1 and e.executions[0]["operations"][1]["executable"] == "ffmpeg"
+    assert first["usage"]["analyzer_calls"] == 1 and first["usage"]["operations"][1]["executable"] == "ffmpeg"
     second = e.analyze({"asset_id": "asset-1", "input": str(media["av"]), "kind": "loudness"})
-    assert second["cache"] == "hit" and len(e.executions) == 1 and second["observation"] == first["observation"]
+    assert second["cache"]["status"] == "hit" and len(e.executions) == 1 and second["observation"] == first["observation"]
+    assert second["usage"] == {"analyzer_calls": 0, "seconds": 0.0, "operations": []}
     assert e.cache.stats() == {"directory": str(tmp_path / "cache"), "hits": 1, "misses": 1, "invalid": 0}
     # a second engine (new process) reuses the same on-disk cache
     e2 = engine(tmp_path, cache=True)
-    assert e2.analyze({"asset_id": "asset-9", "input": str(media["av"]), "kind": "loudness"})["cache"] == "hit" and e2.executions == []
+    assert e2.analyze({"asset_id": "asset-9", "input": str(media["av"]), "kind": "loudness"})["cache"]["status"] == "hit" and e2.executions == []
+    # cache policies: bypass never reads or writes; only never runs an analyzer
+    by = e2.analyze({"asset_id": "asset-1", "input": str(media["av"]), "kind": "loudness", "cache_policy": "bypass"})
+    assert by["cache"]["status"] == "bypass" and len(e2.executions) == 1
+    with pytest.raises(AnalysisError) as ex:
+        e2.analyze({"asset_id": "asset-1", "input": str(media["av"]), "kind": "silence", "cache_policy": "only"})
+    assert ex.value.code == "CACHE_MISS" and len(e2.executions) == 1
 
 
 def test_budget_and_timeout_real(media, tmp_path):
@@ -171,7 +180,7 @@ def test_determinism_across_runs(media, tmp_path):
     e = engine(tmp_path)
     a = e.analyze({"asset_id": "asset-1", "input": str(media["av"]), "kind": "silence", "parameters": {"threshold_db": -50}})
     b = e.analyze({"asset_id": "asset-1", "input": str(media["av"]), "kind": "silence", "parameters": {"threshold_db": -50}})
-    assert a["cache_key"] == b["cache_key"] and a["observation"]["id"] == b["observation"]["id"] and a["observation"]["data"] == b["observation"]["data"]
+    assert a["cache"]["key"] == b["cache"]["key"] and a["observation"]["id"] == b["observation"]["id"] and a["observation"]["data"] == b["observation"]["data"]
 
 
 # ---- CLI smoke (real subprocess, real ffmpeg)
@@ -182,34 +191,103 @@ def cli(*args, cwd):
 def test_cli_smoke(media, tmp_path):
     r = cli("doctor", "--json", cwd=tmp_path)
     doc = json.loads(r.stdout)
-    assert r.returncode == 0 and doc["capabilities"]["ffprobe"]["status"] == "AVAILABLE" and all(a["status"] == "available" for a in doc["analyzers"])
+    assert r.returncode == 0 and doc["status"] == "ok" and doc["checks"]["ffprobe"]["status"] == "ok" and doc["checks"]["contract"]["status"] == "ok"
+    assert all(a["status"] == "available" for a in doc["checks"]["analyzer_registry"]["analyzers"]) and doc["checks"]["cache"]["writable"] is True
     r = cli("probe", str(media["av"]), "--json", cwd=tmp_path)
-    assert r.returncode == 0 and json.loads(r.stdout)["observation"]["kind"] == "media_probe" and r.stderr == ""
+    doc = json.loads(r.stdout)
+    assert r.returncode == 0 and doc["status"] == "ok" and doc["observations"][0]["kind"] == "media_probe" and r.stderr == ""
     r = cli("analyze", str(media["av"]), "--kind", "silence", "--kind", "loudness", "--param", "threshold_db=-50", "--json", "--cache-dir", "c", cwd=tmp_path)
     doc = json.loads(r.stdout)
-    assert r.returncode == 0 and [x["observation"]["kind"] for x in doc["results"]] == ["silence", "loudness"] and doc["results"][0]["cache"] == "miss"
+    assert r.returncode == 0 and [x["kind"] for x in doc["results"]] == ["silence", "loudness"] and doc["results"][0]["cache"]["status"] == "miss"
+    assert doc["usage"] == {"analyzer_calls": 2, "cache_hits": 0, "seconds": doc["usage"]["seconds"]} and doc["usage"]["seconds"] > 0
     r = cli("analyze", str(media["av"]), "--kind", "loudness", "--json", "--cache-dir", "c", cwd=tmp_path)
-    assert json.loads(r.stdout)["cache"] == "hit"
+    doc = json.loads(r.stdout)
+    assert doc["results"][0]["cache"]["status"] == "hit" and doc["usage"]["analyzer_calls"] == 0 and doc["usage"]["cache_hits"] == 1
     r = cli("analyze", str(media["av"]), "--kind", "integrity", "--dry-run", "--json", cwd=tmp_path)
-    plan = json.loads(r.stdout)
-    assert plan["dry_run"] is True and plan["operations"][1]["executable"] == "ffmpeg" and not (tmp_path / "c" / "zz").exists()
+    doc = json.loads(r.stdout)
+    plan = doc["results"][0]["plan"]
+    assert doc["dry_run"] is True and plan["operations"][1]["executable"] == "ffmpeg" and doc["usage"]["analyzer_calls"] == 0 and doc["observations"] == []
     r = cli("analyze", str(media["av"]), "--kind", "integrity", "--dry-run", cwd=tmp_path)
     assert r.returncode == 0 and r.stdout.startswith("[dry-run]") and "ffmpeg" in r.stdout
     r = cli("analyze", str(tmp_path / "missing.mp4"), "--kind", "media_probe", "--json", cwd=tmp_path)
-    assert r.returncode != 0 and json.loads(r.stdout)["error"]["code"] == "FILE_NOT_FOUND"
+    doc = json.loads(r.stdout)
+    assert r.returncode == 3 and doc["status"] == "error" and doc["results"][0]["error_kind"] == "FILE_NOT_FOUND" and r.stderr == ""
     r = cli("analyze", str(tmp_path / "missing.mp4"), "--kind", "media_probe", cwd=tmp_path)
-    assert r.returncode != 0 and r.stdout == "" and "FILE_NOT_FOUND" in r.stderr
+    assert r.returncode == 3 and r.stdout == "" and "FILE_NOT_FOUND" in r.stderr
     r = cli("analyze", str(media["av"]), "--kind", "media_probe", "--kind", "loudness", "--max-analysis-calls", "1", "--json", cwd=tmp_path)
-    assert json.loads(r.stdout)["error"]["code"] == "BUDGET_EXCEEDED"
+    doc = json.loads(r.stdout)
+    assert doc["status"] == "partial" and doc["results"][1]["error_kind"] == "BUDGET_EXCEEDED" and r.returncode == 10 and len(doc["observations"]) == 1
     req = tmp_path / "req.json"
     req.write_text(json.dumps({"analysis_id": "analysis-001", "asset_id": "asset-001", "input": str(media["av"]), "kind": "media_probe", "parameters": {}}))
     r = cli("run", str(req), "--json", cwd=tmp_path)
-    o = json.loads(r.stdout)["observation"]
+    o = json.loads(r.stdout)["observations"][0]
     assert o["analysis_id"] == "analysis-001" and o["asset_id"] == "asset-001"
     req.write_text(json.dumps({"asset_id": "a", "input": str(media["av"]), "kind": "media_probe", "argv": ["ffprobe"]}))
     r = cli("run", str(req), "--json", cwd=tmp_path)
-    assert json.loads(r.stdout)["error"]["code"] == "INVALID_INPUT"
+    assert json.loads(r.stdout)["results"][0]["error_kind"] == "INVALID_INPUT" and r.returncode == 2
     r = cli("analyze", str(media["av"]), "--kind", "media_probe", "--allowed-input", str(tmp_path), "--json", cwd=tmp_path)
-    assert json.loads(r.stdout)["error"]["code"] == "PATH_NOT_ALLOWED"
+    assert json.loads(r.stdout)["results"][0]["error_kind"] == "PATH_NOT_ALLOWED"
     r = cli("contract", "--json", cwd=tmp_path)
     assert json.loads(r.stdout)["skill_id"] == "media-analysis"
+
+
+def test_cli_run_stdin_and_batch(media, tmp_path):
+    """Canonical machine interface: request document on stdin, exactly one JSON document on stdout."""
+    batch = {"requests": [{"asset_id": "a1", "input": str(media["av"]), "kind": "duration"},
+                          {"asset_id": "a1", "input": str(media["av"]), "kind": "audio_format", "parameters": {"stream": 5}},
+                          {"asset_id": "a1", "input": str(media["av"]), "kind": "loudness"}],
+             "budget": {"max_analysis_calls": 2}}
+    r = subprocess.run([sys.executable, "-m", "media_analysis.cli", "run", "-", "--json"], cwd=str(tmp_path), input=json.dumps(batch),
+                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    doc = json.loads(r.stdout)                                   # parses as one document
+    assert r.stdout.count('"schema": "media-analysis/response@1"') == 1 and r.stderr == ""
+    assert doc["status"] == "partial" and [x["status"] for x in doc["results"]] == ["ok", "error", "error"]
+    assert doc["results"][1]["error_kind"] == "INVALID_INPUT" and doc["results"][2]["error_kind"] == "BUDGET_EXCEEDED"
+    assert doc["budget"]["budget"]["max_analysis_calls"] == 2 and doc["usage"]["analyzer_calls"] == 1 and r.returncode == 2
+    # invalid JSON on stdin -> still exactly one parseable response document, non-zero exit
+    r = subprocess.run([sys.executable, "-m", "media_analysis.cli", "run", "-", "--json"], cwd=str(tmp_path), input="{not json",
+                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    doc = json.loads(r.stdout)
+    assert doc["status"] == "error" and doc["error_kind"] == "INVALID_INPUT" and doc["results"] == [] and r.returncode == 2
+    # unknown budget field is rejected, not ignored
+    r = subprocess.run([sys.executable, "-m", "media_analysis.cli", "run", "-", "--json"], cwd=str(tmp_path),
+                       input=json.dumps({"requests": batch["requests"][:1], "budget": {"max_gpu_seconds": 1}}), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    doc = json.loads(r.stdout)
+    assert doc["status"] == "error" and doc["error_kind"] == "INVALID_INPUT" and "max_gpu_seconds" in json.dumps(doc["error"])
+
+
+def test_timeout_kills_process_group_and_leaves_no_cache(media, tmp_path):
+    """After ANALYZER_TIMEOUT no ffmpeg keeps running on the input and no cache entry exists for that identity."""
+    e = engine(tmp_path, cache=True)
+    with pytest.raises(AnalysisError) as ex:
+        e.analyze({"asset_id": "asset-1", "input": str(media["av"]), "kind": "integrity", "timeout": 0.001})
+    assert ex.value.code == "ANALYZER_TIMEOUT"
+    assert not list((tmp_path / "cache").rglob("*.json"))
+    if Path("/proc").is_dir():
+        alive = []
+        for pid in Path("/proc").iterdir():
+            if pid.name.isdigit():
+                try:
+                    cmd = (pid / "cmdline").read_bytes()
+                except OSError:
+                    continue
+                if b"ffmpeg" in cmd and str(media["av"]).encode() in cmd:
+                    alive.append(pid.name)
+        assert alive == []
+    assert e.tracker.calls == 1 and e.executions[0]["kind"] == "integrity"
+
+
+def test_all_kinds_real_media(media, tmp_path):
+    """Every declared kind runs on real media and the response validates against the published schemas."""
+    from media_analysis.contract import ANALYSIS_KINDS, PARAMETER_SCHEMAS, skill_contract
+    from media_analysis.schemas import RESPONSE_SCHEMA, contract_refs, validate
+    e = engine(tmp_path, cache=True)
+    reqs = [{"asset_id": "asset-1", "input": str(media["multi"]), "kind": k} for k in ANALYSIS_KINDS]
+    doc = e.run({"requests": reqs})
+    assert doc["status"] == "ok" and [o["kind"] for o in doc["observations"]] == list(ANALYSIS_KINDS)
+    refs = contract_refs(list(ANALYSIS_KINDS), PARAMETER_SCHEMAS)
+    assert validate(doc, RESPONSE_SCHEMA, refs) == []
+    again = e.run({"requests": reqs})
+    assert again["usage"]["analyzer_calls"] == 0 and again["usage"]["cache_hits"] == len(ANALYSIS_KINDS) and again["observations"] == doc["observations"]
+    assert len(e.executions) == len(ANALYSIS_KINDS)
+    assert {t["tool_id"] for t in skill_contract()["tools"]} == {ex["analyzer"] for ex in e.executions}
