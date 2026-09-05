@@ -1,15 +1,46 @@
+<p align="center">
+  <img src="assets/hero.jpg" alt="Media Analysis Skill — Understand your media" width="100%">
+</p>
+
 # media-analysis-skill
 
-Deterministic media **observation / analysis** Skill: measure facts about media files (container, streams,
-video / audio format, silence, loudness, integrity, scene cuts, timing) and return them as structured
-**Observations**.
+**Measure your media before anyone decides anything about it.** Local `ffprobe` / `ffmpeg`, Python standard
+library, structured Observations out. No AI inside.
+
+<p>
+  <a href="https://github.com/kajisho5/media-analysis-skill/actions/workflows/tests.yml"><img alt="tests" src="https://github.com/kajisho5/media-analysis-skill/actions/workflows/tests.yml/badge.svg"></a>
+  <img alt="python 3.9+" src="https://img.shields.io/badge/python-3.9%2B-blue">
+  <img alt="dependencies: none" src="https://img.shields.io/badge/dependencies-none-success">
+  <img alt="platforms" src="https://img.shields.io/badge/platforms-linux%20%7C%20macos%20%7C%20windows-informational">
+  <a href="LICENSE"><img alt="license MIT" src="https://img.shields.io/badge/license-MIT-lightgrey"></a>
+  <a href="https://github.com/sponsors/kajisho5"><img alt="sponsor" src="https://img.shields.io/badge/sponsor-%E2%9D%A4-ff69b4"></a>
+</p>
+
+`media-analysis-skill` is the **eyes and meters** of a video-production toolchain. It measures facts about a media
+file — container, streams, video / audio format, silence, loudness, integrity, scene cuts, timing — and returns
+them as deterministic, verifiable **Observation JSON** that an agent (or a human) can reason about. Its sibling
+[ffmpeg-skill](https://github.com/kajisho5/ffmpeg-skill) is the hands that edit; the
+[video-production-agent](https://github.com/kajisho5/video-production-agent) is the brain that decides.
 
 **media-analysis-skill is NOT an AI agent.** It contains no AI provider, no LLM, no prompt, no reasoning, no
 inference, no decision, no policy, no approval and no production planning. It never edits, converts or renders
 media. It measures, and it says what it could not measure.
 
+## Quick start
+
+Requirements: Python 3.9+ (standard library only) and FFmpeg (`ffmpeg` + `ffprobe`) on `PATH`.
+
+```bash
+git clone https://github.com/kajisho5/media-analysis-skill
+cd media-analysis-skill
+pip install -e .
+media-analysis doctor            # ffmpeg / ffprobe / filters, analyzer availability, contract, cache, path policy
+media-analysis probe input.mp4   # container + first video / audio stream, human-readable
+```
+
+Then measure what you need:
+
 ```text
-media-analysis probe input.mp4
 media-analysis analyze input.mp4 --kind media_probe
 media-analysis analyze input.mp4 --kind silence --param threshold_db=-45 --json
 media-analysis analyze input.mp4 --kind loudness --kind integrity --json --cache-dir .media-analysis-cache
@@ -21,7 +52,19 @@ media-analysis contract --json                  # machine-readable Skill / Tool 
 media-analysis contract --check saved.json      # does a saved contract still describe this installation? (drift detection, exit 1 on drift)
 ```
 
-Requirements: Python 3.9+, standard library only; FFmpeg (`ffmpeg` + `ffprobe`) on PATH. Install: `pip install -e .`
+Everything runs locally; nothing is uploaded. Ten analysis kinds, one response schema, exit codes an adapter can
+branch on. Details below and in [docs/](docs/).
+
+## Why a measurement Skill
+
+| | |
+|---|---|
+| **Deterministic** | same file content + analyzer + version + parameters → same identity, same Observation id, same data |
+| **Observations, not opinions** | `silence 0.0–3.0 s exists` is the whole statement; `trim it` is the agent's job. No confidence-of-action, no recommendations |
+| **Verifiable** | every Observation records the analyzer, its version, the effective parameters and the file's sha256; every response is checked against the published schemas before it leaves |
+| **Honest** | what could not be measured is `null` / `not_performed`, never PASS; a failed analyzer run still reports its cost |
+| **Safe to call from an agent** | structured JSON in and out, no shell, no command or argv fields, no executable override, workspace-confined writes, process-group timeouts |
+| **Cheap to repeat** | content-addressed cache: a second question about the same file starts zero processes |
 
 ## Ecosystem and responsibilities
 
@@ -31,6 +74,16 @@ Requirements: Python 3.9+, standard library only; FFmpeg (`ffmpeg` + `ffprobe`) 
 | Does | cut, render, overlay, captions, audio processing, loudness normalisation, export, compliance check | probe, stream layout, video / audio format, silence, loudness measurement, scene cuts, integrity, timing | interprets Observations, derives Inferences and Decisions, chooses Skills / Tools, asks for approval, plans and executes production |
 | Never | decides what to produce | interprets, decides, edits, writes media | runs ffmpeg directly |
 | Output | media artifacts (+ `--json` result) | Observation JSON (`source: media-analysis/<tool>@<version>`) | Project IR, plans, provenance |
+
+```text
+media file ──▶ media-analysis-skill ──▶ Observations (measured facts, provenance OBSERVED)
+                                             │
+                                             ▼
+                                   video-production-agent ──▶ Inference → Decision → Plan
+                                             │
+                                             ▼
+                                   production Skills (ffmpeg-skill …) ──▶ Execution → QA
+```
 
 Overlap that is intentional: ffmpeg-skill has `probe`, `silence --list`, `loudness --measure-only` and `scenes` for its
 own workflow. This package is the dedicated observation domain with a stable Observation contract, analysis identity,
