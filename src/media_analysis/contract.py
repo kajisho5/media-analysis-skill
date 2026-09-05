@@ -92,6 +92,45 @@ TOOL_CAPABILITIES: Dict[str, List[str]] = {
 }
 
 
+# Cross-repository Capability ids (kajisho5/AI-video-production-OS docs/SPEC.md
+# `CapabilityContract.provides`), matching the ids already assigned to these analysis
+# kinds in that project's own docs/CAPABILITY_MATRIX.md section 8. Three of these
+# (measure.audio.loudness, measure.audio.silence, measure.audio.integrity) are the
+# ecosystem's one documented Capability collision: qc-skill independently implements the
+# same three measurements and publishes the identical id for each in its own
+# contract.py, so a registry sees one Capability with two Providers, not two unrelated
+# things that happen to share a name.
+#
+# `media_probe`, `stream_layout`, `video_format` and `audio_format` were left
+# unassigned in an earlier version of this mapping while CAPABILITY_MATRIX.md's section
+# 8c still bundled them as an unpinned note. That has since been resolved there
+# (2026-09-05): `video_format` is confirmed a genuinely different capability from
+# qc-skill's `measure.video.format` (a raw, threshold-free probe vs. a pass/fail
+# judgment against caller-supplied thresholds - confirmed by reading both
+# implementations, not assumed), and `ffmpeg-skill`'s own `probe` tool is a base-layer
+# *tool* overlap, never a Capability collision (this Skill talks to ffprobe directly
+# and does not depend on the ffmpeg-skill package). `duration` gets its own id too,
+# consistent with every other analysis kind here, even though it reports a strict
+# subset of `media_probe`'s facts.
+CAPABILITY_IDS: Dict[str, str] = {
+    "silence": "measure.audio.silence",
+    "loudness": "measure.audio.loudness",
+    "integrity": "measure.audio.integrity",
+    "scene_detection": "measure.video.scene_detection",
+    "timing": "measure.video.timing",
+    "media_probe": "measure.media.probe",
+    "stream_layout": "measure.media.stream_layout",
+    "video_format": "measure.video.probe",
+    "audio_format": "measure.audio.probe",
+    "duration": "measure.media.duration",
+}
+
+
+def capability_provides() -> List[Dict[str, str]]:
+    return [{"id": CAPABILITY_IDS[kind], "lifecycle": "EXPERIMENTAL", "tool_id": tool_id(KIND_TO_TOOL[kind]), "kind": kind}
+            for kind in sorted(CAPABILITY_IDS)]
+
+
 def tool_id(tool: str) -> str:
     return f"{SKILL_ID}/{tool}"
 
@@ -135,6 +174,7 @@ def skill_contract() -> Dict[str, Any]:
         "capabilities": ["ffprobe"],   # the whole package needs ffprobe; ffmpeg + filters are per tool
         "capability_names": sorted({c for a in analyzers for c in a.required_capabilities}),
         "tools": tools,
+        "provides": capability_provides(),
         "analysis_kinds": kinds,
         "kind_to_tool": {k: tool_id(t) for k, t in KIND_TO_TOOL.items()},
         "execution": {
