@@ -101,21 +101,28 @@ TOOL_CAPABILITIES: Dict[str, List[str]] = {
 # contract.py, so a registry sees one Capability with two Providers, not two unrelated
 # things that happen to share a name.
 #
-# Deliberately incomplete: `media_probe`, `stream_layout`, `video_format`, `audio_format`
-# and `duration` have no entry here. CAPABILITY_MATRIX.md's own section 8c leaves their
-# id unsettled (its note bundles them as "measure.video.probe / measure.*.format /
-# measure.*.duration" without pinning one id per kind), and that same document is
-# explicit that `video_format` is *not* the same capability as qc-skill's
-# `measure.video.format` ("a related-but-distinct capability, not the same id, pending
-# further audit") - so guessing an id here risks publishing a false collision the matrix
-# has already ruled out. These five kinds stay unassigned until that matrix decision is
-# made, rather than forcing five new ids into existence in this PR.
+# `media_probe`, `stream_layout`, `video_format` and `audio_format` were left
+# unassigned in an earlier version of this mapping while CAPABILITY_MATRIX.md's section
+# 8c still bundled them as an unpinned note. That has since been resolved there
+# (2026-09-05): `video_format` is confirmed a genuinely different capability from
+# qc-skill's `measure.video.format` (a raw, threshold-free probe vs. a pass/fail
+# judgment against caller-supplied thresholds - confirmed by reading both
+# implementations, not assumed), and `ffmpeg-skill`'s own `probe` tool is a base-layer
+# *tool* overlap, never a Capability collision (this Skill talks to ffprobe directly
+# and does not depend on the ffmpeg-skill package). `duration` gets its own id too,
+# consistent with every other analysis kind here, even though it reports a strict
+# subset of `media_probe`'s facts.
 CAPABILITY_IDS: Dict[str, str] = {
     "silence": "measure.audio.silence",
     "loudness": "measure.audio.loudness",
     "integrity": "measure.audio.integrity",
     "scene_detection": "measure.video.scene_detection",
     "timing": "measure.video.timing",
+    "media_probe": "measure.media.probe",
+    "stream_layout": "measure.media.stream_layout",
+    "video_format": "measure.video.probe",
+    "audio_format": "measure.audio.probe",
+    "duration": "measure.media.duration",
 }
 
 

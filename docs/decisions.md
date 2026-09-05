@@ -118,23 +118,33 @@
   agent should act", which is inference. Scores that are measurements (`cut_score`, `probe_score`) keep their
   measurement names. A static test forbids confidence / recommendation vocabulary in the analyzers.
 
-## ADR-022 `provides` publishes five analysis kinds as cross-repository Capability ids, deliberately not all nine
+## ADR-022 `provides` publishes all nine analysis kinds as cross-repository Capability ids
 - `contract.py` adds a top-level `provides` list for `kajisho5/AI-video-production-OS`'s `CapabilityContract.provides`
   (`docs/SPEC.md` there), so a registry can resolve "who provides `measure.audio.loudness`" without hardcoding this
-  repository. Five kinds get an id, matching that project's own `docs/CAPABILITY_MATRIX.md` section 8 exactly:
+  repository. All nine kinds get an id, matching that project's own `docs/CAPABILITY_MATRIX.md` section 8 exactly:
   `silence` -> `measure.audio.silence`, `loudness` -> `measure.audio.loudness`, `integrity` -> `measure.audio.integrity`,
-  `scene_detection` -> `measure.video.scene_detection`, `timing` -> `measure.video.timing`.
-- Three of those five (`silence`, `loudness`, `integrity`) are the ecosystem's one documented Capability collision:
+  `scene_detection` -> `measure.video.scene_detection`, `timing` -> `measure.video.timing`, `media_probe` ->
+  `measure.media.probe`, `stream_layout` -> `measure.media.stream_layout`, `video_format` -> `measure.video.probe`,
+  `audio_format` -> `measure.audio.probe`, `duration` -> `measure.media.duration`.
+- Three of those (`silence`, `loudness`, `integrity`) are the ecosystem's one documented Capability collision:
   `qc-skill` independently implements the same three measurements with no shared code and publishes the identical id
   for each in its own `contract.py` (companion PR), so a registry sees one Capability with two Providers, not two
   unrelated things that happen to share a name.
-- `media_probe`, `stream_layout`, `video_format`, `audio_format` and `duration` are deliberately not in `provides`.
-  `CAPABILITY_MATRIX.md`'s own section 8c leaves their id unsettled - its note bundles them as "measure.video.probe /
-  measure.\*.format / measure.\*.duration" without pinning one id per kind - and that document is explicit that this
-  Skill's `video_format` is *not* the same capability as `qc-skill`'s `measure.video.format` ("a related-but-distinct
-  capability, not the same id, pending further audit"). Guessing an id here would risk publishing a false collision
-  that document has already ruled out, so these five kinds stay unassigned until that matrix decision is made rather
-  than forcing five new ids into existence in this change.
+- The last five ids (`media_probe`, `stream_layout`, `video_format`, `audio_format`, `duration`) were left unassigned
+  in an earlier version of this contract, while `CAPABILITY_MATRIX.md`'s own section 8c still bundled them as one
+  unpinned note, specifically to avoid two risks: colliding with `qc-skill`'s `measure.video.format`, and colliding
+  with `ffmpeg-skill`'s base-layer `probe` tool. Both were resolved there by reading the actual implementations, not
+  by assumption: `video_format` (this Skill's raw, threshold-free probe of one video stream) and `measure.video.format`
+  (qc-skill's pass/fail judgment against caller-supplied thresholds) measure genuinely different things - confirmed
+  by comparing `analyzers/probe.py`'s `VideoAnalyzer` against qc-skill's `rules.py` check, not merely by their
+  descriptions - so `video_format` got its own id, `measure.video.probe`, naming the distinction (`probe`, not
+  `format`) in the id itself; `ffmpeg-skill`'s `probe` tool overlap was already confirmed a base-layer *tool*
+  overlap, never a Capability collision, since this Skill talks to `ffprobe` directly with no dependency on the
+  `ffmpeg-skill` package - so the two ids never share a namespace (`measure.*` vs. `ffmpeg-skill.*`) regardless.
+  `duration` gets its own id (`measure.media.duration`) too, consistent with every other analysis kind here, even
+  though `TimingAnalyzer.analyze`'s `duration` branch reports only a strict subset of what `media_probe` already
+  returns (`_durations(p)`, no packet-timestamp work) - kept separate rather than folded in, because every other
+  kind in this contract is independently addressable regardless of overlap in what it measures.
 - Additive: a new top-level `provides` key, verified against `contract_check.check_contract()` (reports zero
   problems with `provides` present - `check_contract` does not assert on this field, so nothing needed to change
   there) and against `evals/contract_evals.py`'s `C11_contract_registry_consistency`.
