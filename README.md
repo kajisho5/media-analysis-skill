@@ -215,7 +215,7 @@ document itself was rejected); without `--json`, one line on stderr. The table i
   `contract@2` would be a different `schema` value and is refused by `--check` of a `@1` implementation. Stable
   identifiers for the video-production-agent adapter: `skill_id`, `version`, `tools[].tool_id`, `tools[].version`,
   `tools[].required_capabilities`, `tools[].kinds`, `kind_to_tool`, `errors.exit_codes`.
-- `contract --json` → `provides`: all nine of this Skill's analysis kinds by their cross-repository Capability id
+- `contract --json` → `provides`: all ten of this Skill's analysis kinds by their cross-repository Capability id
   (`silence` -> `measure.audio.silence`, `loudness` -> `measure.audio.loudness`, `integrity` -> `measure.audio.integrity`,
   `scene_detection` -> `measure.video.scene_detection`, `timing` -> `measure.video.timing`, `media_probe` ->
   `measure.media.probe`, `stream_layout` -> `measure.media.stream_layout`, `video_format` -> `measure.video.probe`,
