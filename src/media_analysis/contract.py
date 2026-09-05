@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from . import SKILL_ID, VERSION
 from .canonical import stable_hash
-from .errors import ERROR_CODES, EXIT_CODES, AnalysisError
+from .errors import ERROR_CLASS_OF, ERROR_CODES, EXIT_CODES, AnalysisError
 from .schemas import (BATCH_SCHEMA, CACHE_POLICIES, CACHE_STATUSES, OBSERVATION_SCHEMA, OBSERVATION_SCHEMA_VERSION, REQUEST_SCHEMA_VERSION,
                       RESPONSE_SCHEMA, RESPONSE_SCHEMA_VERSION, RESULT_SCHEMA, request_schema)
 
@@ -199,7 +199,11 @@ def skill_contract() -> Dict[str, Any]:
                    "exceeded": "BUDGET_EXCEEDED, no observation, no analyzer process"},
         "identity": {"analysis_identity": ["asset_fingerprint", "analyzer", "analyzer_version", "kind", "effective_parameters"], "canonical_json": True,
                      "observation_id": "obs_<identity[:16]>", "derived_analysis_id": "analysis-<identity[:16]>"},
-        "errors": {"codes": list(ERROR_CODES), "exit_codes": dict(EXIT_CODES), "success_exit_code": 0},
+        "errors": {"codes": list(ERROR_CODES), "exit_codes": dict(EXIT_CODES), "classes": dict(ERROR_CLASS_OF), "success_exit_code": 0,
+                   "class_semantics": {"FATAL": "terminal: retrying the unchanged request rejects identically", "RETRYABLE": "a bounded retry of the same request may succeed",
+                                       "BLOCKED": "the environment (executable, filter) or the caller's budget must change first"}},
+        "security": {"forbidden_keys": list(AnalysisRequest.FORBIDDEN_KEYS), "forbidden_keys_scope": "whole request document, recursive, case-insensitive",
+                     "shell": False, "executable_override": False, "network": False},
     }
 
 
@@ -216,15 +220,17 @@ class AnalysisRequest:
     cache_policy: str = "use"
 
     ALLOWED_KEYS = ("analysis_id", "asset_id", "input", "kind", "parameters", "timeout", "output_policy", "cache_policy")
-    FORBIDDEN_KEYS = ("command", "argv", "args", "shell", "cmd", "exec")
+    # AI-video-production-OS SKILL_SPEC.md section 3.1 canonical denylist (never narrowed, may be extended), applied
+    # recursively to the whole request document: a forbidden key nested inside `parameters` is rejected the same way
+    FORBIDDEN_KEYS = ("command", "argv", "args", "shell", "cmd", "exec", "filter_complex", "filter", "api_key", "token", "env")
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "AnalysisRequest":
         if not isinstance(d, dict):
             raise AnalysisError("INVALID_INPUT", "request must be a JSON object")
-        bad = [k for k in d if k in cls.FORBIDDEN_KEYS]
+        bad = forbidden_keys(d, cls.FORBIDDEN_KEYS)
         if bad:
-            raise AnalysisError("INVALID_INPUT", "request must not carry command / argv style fields", {"fields": bad})
+            raise AnalysisError("INVALID_INPUT", "request must not carry command / argv / credential style fields", {"fields": bad})
         unknown = [k for k in d if k not in cls.ALLOWED_KEYS]
         if unknown:
             raise AnalysisError("INVALID_INPUT", "unknown request fields", {"fields": unknown})
@@ -272,6 +278,21 @@ class AnalysisRequest:
     def to_dict(self) -> Dict[str, Any]:
         return {"analysis_id": self.analysis_id, "asset_id": self.asset_id, "input": self.input, "kind": self.kind,
                 "parameters": dict(self.parameters), "timeout": self.timeout, "output_policy": dict(self.output_policy), "cache_policy": self.cache_policy}
+
+
+def forbidden_keys(obj: Any, denylist: Tuple[str, ...], path: str = "") -> List[str]:
+    """Paths of denylisted keys anywhere in a JSON document (case-insensitive), e.g. ['command', 'parameters.api_key']."""
+    found: List[str] = []
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            here = f"{path}.{k}" if path else str(k)
+            if isinstance(k, str) and k.lower() in denylist:
+                found.append(here)
+            found += forbidden_keys(v, denylist, here)
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            found += forbidden_keys(v, denylist, f"{path}[{i}]")
+    return found
 
 
 def validate_parameters(kind: str, params: Dict[str, Any]) -> Dict[str, Any]:

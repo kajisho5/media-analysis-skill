@@ -216,9 +216,16 @@ def doctor_report(workspace: Optional[str] = None, cache_dir: Optional[str] = No
             checks["cache"] = {"status": "fail", "directory": target, "detail": getattr(e, "message", str(e))}
             problems.append("cache: " + getattr(e, "message", str(e)))
     unavailable = [r["tool_id"] for r in rows if r["status"] != "available"]
+    by_tool = {r["tool_id"]: r for r in rows}
+    capabilities = []
+    for entry in skill_contract()["provides"]:          # SKILL_SPEC.md #7: AVAILABLE / MISSING per declared Capability
+        row = by_tool.get(entry["tool_id"])
+        missing = list(row["missing_capabilities"]) if row else ["analyzer not registered"]
+        capabilities.append({"id": entry["id"], "tool_id": entry["tool_id"], "kind": entry["kind"], "lifecycle": entry["lifecycle"],
+                             "status": "AVAILABLE" if row and not missing else "MISSING", "missing": missing})
     status = "fail" if problems else ("degraded" if unavailable else "ok")
     return {"schema": "media-analysis/doctor@1", "skill": {"id": SKILL_ID, "version": VERSION}, "status": status, "checks": checks,
-            "unavailable_tools": unavailable, "problems": problems, "secrets_shown": False}
+            "capabilities": capabilities, "unavailable_tools": unavailable, "problems": problems, "secrets_shown": False}
 
 
 def _print_doctor(doc: Dict[str, Any]) -> None:
@@ -234,6 +241,9 @@ def _print_doctor(doc: Dict[str, Any]) -> None:
     print(f"path policy: {ch['path_policy']['status']}  workspace={ch['path_policy'].get('workspace')}  inputs={ch['path_policy'].get('input_rule')}")
     if "cache" in ch:
         print(f"cache: {ch['cache']['status']}  {ch['cache'].get('directory')}" + ("" if ch["cache"]["status"] == "ok" else f"  ({ch['cache'].get('detail', 'not writable')})"))
+    print("capabilities:")
+    for c in doc["capabilities"]:
+        print(f"  {c['id']}: {c['status']}  ({c['tool_id']}, {c['lifecycle']})" + (f"  missing: {', '.join(c['missing'])}" if c["missing"] else ""))
     print("analyzers:")
     for r in ch["analyzer_registry"].get("analyzers", []):
         extra = "" if r["status"] == "available" else "  missing: " + ", ".join(r["missing_capabilities"])

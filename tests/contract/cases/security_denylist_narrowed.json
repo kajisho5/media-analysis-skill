@@ -1,0 +1,18 @@
+{
+  "id": "security_denylist_narrowed",
+  "description": "a contract claiming a narrower denylist than the implementation enforces",
+  "mutations": [
+    {
+      "op": "set_map",
+      "path": "security",
+      "key": "forbidden_keys",
+      "value": [
+        "command",
+        "argv"
+      ]
+    }
+  ],
+  "expect_problems": [
+    "security"
+  ]
+}

@@ -12,6 +12,7 @@ from .errors import ERROR_CODES, EXIT_CODES
 from .schemas import OBSERVATION_SCHEMA_VERSION, REQUEST_SCHEMA_VERSION, RESPONSE_SCHEMA_VERSION
 
 SUPPORTED_CONTRACT_SCHEMAS = ("media-analysis/contract@1",)
+LIFECYCLES = ("PROPOSED", "EXPERIMENTAL", "STABLE", "DEPRECATED", "RETIRED")   # AI-video-production-OS CAPABILITY_MODEL.md
 CANONICAL_INVOCATION = ["media-analysis", "run", "<request.json | ->", "--json"]
 
 
@@ -85,6 +86,26 @@ def check_contract(doc: Any) -> List[str]:
     errs = doc.get("errors") or {}
     eq("errors.codes", list(ERROR_CODES), errs.get("codes"))
     eq("errors.exit_codes", dict(EXIT_CODES), errs.get("exit_codes"))
-    for section in ("cache", "budget", "identity"):
+    eq("errors.classes", live["errors"]["classes"], errs.get("classes"))
+    for section in ("cache", "budget", "identity", "security"):
         eq(section, live[section], doc.get(section))
+    # provides: one Capability id per analysis kind, tool ids that exist, valid lifecycle (OS registry rules)
+    provides = doc.get("provides")
+    if not isinstance(provides, list):
+        problems.append("provides: missing or not a list")
+    else:
+        live_by_kind = {e["kind"]: e for e in live["provides"]}
+        seen_kinds = set()
+        for e in provides:
+            if not isinstance(e, dict) or not isinstance(e.get("id"), str) or not isinstance(e.get("tool_id"), str) or e.get("lifecycle") not in LIFECYCLES:
+                problems.append(f"provides: malformed entry {e!r}")
+                continue
+            kind = e.get("kind")
+            seen_kinds.add(kind)
+            if kind not in live_by_kind:
+                problems.append(f"provides[{e['id']}]: kind {kind!r} is not an analysis kind")
+            elif e != live_by_kind[kind]:
+                problems.append(f"provides[{kind}]: expected {live_by_kind[kind]!r}, got {e!r}")
+        for kind in sorted(set(live_by_kind) - seen_kinds):
+            problems.append(f"provides: analysis kind {kind} has no Capability id")
     return problems

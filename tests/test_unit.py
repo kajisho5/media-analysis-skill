@@ -82,10 +82,17 @@ def test_request_validation():
 
 
 def test_request_rejects_command_and_argv():
-    for field in ("command", "argv", "args", "shell", "cmd", "exec"):
+    for field in ("command", "argv", "args", "shell", "cmd", "exec", "filter_complex", "filter", "api_key", "token", "env"):
         with pytest.raises(AnalysisError) as e:
             AnalysisRequest.from_dict({"asset_id": "a", "input": "x.mp4", "kind": "media_probe", field: ["rm", "-rf", "/"]})
         assert e.value.code == "INVALID_INPUT" and field in e.value.details["fields"]
+        # nested inside parameters (one level and deeper): rejected as forbidden, never silently stripped
+        with pytest.raises(AnalysisError) as e:
+            AnalysisRequest.from_dict({"asset_id": "a", "input": "x.mp4", "kind": "silence", "parameters": {field: "x"}})
+        assert e.value.code == "INVALID_INPUT" and f"parameters.{field}" in e.value.details["fields"]
+        with pytest.raises(AnalysisError) as e:
+            AnalysisRequest.from_dict({"asset_id": "a", "input": "x.mp4", "kind": "silence", "parameters": {"stream": 0}, "output_policy": {"nested": [{field.upper(): 1}]}})
+        assert e.value.code == "INVALID_INPUT" and "output_policy.nested[0]." in e.value.details["fields"][0]
 
 
 def test_kind_validation():
@@ -508,7 +515,10 @@ def test_error_model():
     assert len(set(EXIT_CODES.values())) == len(ERROR_CODES) and min(EXIT_CODES.values()) >= 2
     assert EXIT_CODES["INVALID_INPUT"] == 2 and EXIT_CODES["FILE_NOT_FOUND"] == 3 and EXIT_CODES["BUDGET_EXCEEDED"] == 10 and EXIT_CODES["CACHE_MISS"] == 13
     e = AnalysisError("FILE_NOT_FOUND", "x", {"path": "/p"})
-    assert e.to_dict() == {"code": "FILE_NOT_FOUND", "message": "x", "details": {"path": "/p"}}
+    assert e.to_dict() == {"code": "FILE_NOT_FOUND", "message": "x", "details": {"path": "/p"}, "class": "FATAL"}
+    from media_analysis.errors import ERROR_CLASSES, ERROR_CLASS_OF
+    assert set(ERROR_CLASS_OF) == set(ERROR_CODES) and set(ERROR_CLASS_OF.values()) <= set(ERROR_CLASSES)
+    assert ERROR_CLASS_OF["ANALYZER_TIMEOUT"] == "RETRYABLE" and ERROR_CLASS_OF["BUDGET_EXCEEDED"] == "BLOCKED" and ERROR_CLASS_OF["INVALID_INPUT"] == "FATAL"
     with pytest.raises(ValueError):
         AnalysisError("MADE_UP", "x")
 

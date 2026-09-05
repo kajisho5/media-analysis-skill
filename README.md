@@ -199,7 +199,9 @@ Step-by-step adapter recipe: [docs/architecture.md](docs/architecture.md#connect
 | 7 | `ANALYZER_TIMEOUT` | | |
 
 With `--json` every error is inside the response document (per result, or `error` / `error_kind` at the top when the
-document itself was rejected); without `--json`, one line on stderr. The table is also in `contract --json` → `errors`.
+document itself was rejected); without `--json`, one line on stderr. Every error also carries a class for the
+caller's retry policy: `FATAL` (never retry unchanged), `RETRYABLE` (bounded retry may succeed), `BLOCKED`
+(environment or budget must change). The tables are in `contract --json` → `errors`.
 
 ## Versioning
 

@@ -292,3 +292,63 @@ def test_batch_identity_independent_of_order(tmp_path):
     assert f[("asset-a", "an-a")]["asset"]["fingerprint"] != f[("asset-b", "an-b")]["asset"]["fingerprint"]
     assert f[("asset-a", "an-a")]["id"] == f[("asset-a2", "analysis-" + f[("asset-a", "an-a")]["analysis"]["identity"][:16])]["id"]   # same file, same identity
     assert [x["asset_id"] for x in fwd["observations"]] == ["asset-a", "asset-b", "asset-a2"]
+
+
+# ---- AI-video-production-OS registry / conformance rules (tests/contract/os_registry_contract.json)
+OS_RULES = json.loads((Path(__file__).parent / "contract" / "os_registry_contract.json").read_text(encoding="utf-8"))
+
+
+def test_os_registry_provides_rules():
+    c = skill_contract()
+    assert c["skill_id"] and "skill_id" in OS_RULES["skill_identity"]["accepted_shapes"]
+    provides = c["provides"]
+    assert [e["kind"] for e in provides] == sorted(ANALYSIS_KINDS) and len(provides) == 10
+    ids = [e["id"] for e in provides]
+    assert len(set(ids)) == len(ids)
+    tool_ids = {t["tool_id"] for t in c["tools"]}
+    for e in provides:
+        for f in OS_RULES["provides_entry"]["required"]:
+            assert isinstance(e[f], str) and e[f]
+        assert e["lifecycle"] in OS_RULES["provides_entry"]["lifecycles"]
+        assert e["tool_id"] in tool_ids and c["kind_to_tool"][e["kind"]] == e["tool_id"]
+        assert set(e) <= set(OS_RULES["provides_entry"]["required"]) | set(OS_RULES["provides_entry"]["extra_fields_permitted"])
+    for cid in OS_RULES["known_collision"]["ids"]:
+        assert cid in ids                                    # the documented collision with qc-skill is published, not hidden
+
+
+def test_os_denylist_is_a_superset_and_recursive():
+    from media_analysis.contract import AnalysisRequest, forbidden_keys
+    assert set(OS_RULES["denylist"]["canonical"]) <= set(AnalysisRequest.FORBIDDEN_KEYS)
+    assert skill_contract()["security"]["forbidden_keys"] == list(AnalysisRequest.FORBIDDEN_KEYS)
+    doc = {"asset_id": "a", "input": "x", "kind": "silence", "parameters": {"threshold_db": -40, "Filter": "x", "deep": {"token": 1}}, "list": [{"ENV": {}}]}
+    assert forbidden_keys(doc, AnalysisRequest.FORBIDDEN_KEYS) == ["parameters.Filter", "parameters.deep.token", "list[0].ENV"]
+    with pytest.raises(AnalysisError) as e:
+        AnalysisRequest.from_dict(doc)
+    assert e.value.code == "INVALID_INPUT" and e.value.details["fields"] == ["parameters.Filter", "parameters.deep.token", "list[0].ENV"]
+
+
+def test_error_class_in_results(tmp_path):
+    from test_unit import CountingAnalyzer, FakeRegistry, fake_caps
+    f = tmp_path / "a.bin"
+    f.write_bytes(b"media")
+    eng = AnalysisEngine(caps=fake_caps("ffprobe"), registry=FakeRegistry(CountingAnalyzer()), budget=Budget(max_analysis_calls=0))
+    doc = eng.run({"requests": [{"asset_id": "a", "input": str(f), "kind": "media_probe"}, {"asset_id": "a", "input": str(tmp_path / "nope"), "kind": "media_probe"}]})
+    assert [r["error_class"] for r in doc["results"]] == ["BLOCKED", "FATAL"]
+    assert all(r["error"]["class"] == r["error_class"] for r in doc["results"])
+    assert validate(doc, RESPONSE_SCHEMA, REFS) == []
+    err = eng.run("nope")
+    assert err["error_class"] == "FATAL" and err["error"]["class"] == "FATAL"
+    c = skill_contract()
+    assert c["errors"]["classes"] == {code: c["errors"]["classes"][code] for code in ERROR_CODES} and set(c["errors"]["class_semantics"]) == {"FATAL", "RETRYABLE", "BLOCKED"}
+
+
+def test_doctor_reports_per_capability(tmp_path):
+    from media_analysis.cli import doctor_report
+    doc = doctor_report(workspace=str(tmp_path))
+    caps = {c["id"]: c for c in doc["capabilities"]}
+    assert set(caps) == {e["id"] for e in skill_contract()["provides"]}
+    for c in caps.values():
+        assert c["status"] in ("AVAILABLE", "MISSING") and c["lifecycle"] == "EXPERIMENTAL" and c["tool_id"].startswith("media-analysis/")
+        assert (c["status"] == "AVAILABLE") == (not c["missing"])
+    if doc["status"] == "ok":
+        assert all(c["status"] == "AVAILABLE" for c in caps.values())

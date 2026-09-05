@@ -27,6 +27,16 @@ def apply(contract: Dict[str, Any], mutations: List[Dict[str, Any]]) -> Dict[str
             for t in doc["tools"]:
                 if t["tool_id"] == m["tool_id"]:
                     t[m["field"]] = m["value"]
+        elif op == "set_map_nested":
+            doc[m["path"]][m["key"]][m["subkey"]] = m["value"]
+        elif op == "delete_provides":
+            doc["provides"] = [e for e in doc["provides"] if e["kind"] != m["kind"]]
+        elif op == "set_provides_field":
+            for e in doc["provides"]:
+                if e["kind"] == m["kind"]:
+                    e[m["field"]] = m["value"]
+        elif op == "add_provides":
+            doc["provides"].append(dict(m["entry"]))
         elif op == "delete_schema_property":
             doc["schemas"][m["schema"]]["properties"].pop(m["property"])
         else:

@@ -1,0 +1,18 @@
+{
+  "id": "provides_extra_kind",
+  "description": "a Capability for a kind that does not exist",
+  "mutations": [
+    {
+      "op": "add_provides",
+      "entry": {
+        "id": "measure.audio.speaker",
+        "lifecycle": "EXPERIMENTAL",
+        "tool_id": "media-analysis/audio",
+        "kind": "speaker_detection"
+      }
+    }
+  ],
+  "expect_problems": [
+    "is not an analysis kind"
+  ]
+}

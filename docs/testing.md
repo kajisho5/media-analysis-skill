@@ -2,7 +2,7 @@
 
 ```text
 pip install -e . pytest
-python -m pytest -q               # 93 tests: unit + contract + integration + evals
+python -m pytest -q               # 103 tests: unit + contract + integration + evals
 python evals/run.py               # 9 measurement eval cases with expected values and tolerances
 python evals/contract_evals.py    # 17 contract eval cases
 ```
@@ -48,9 +48,13 @@ capability names) · consumer rules from `tests/contract/agent_skill_package_con
 SkillPackage / ToolSpec / Observation / capability-name rules) · request schema ↔ `AnalysisRequest` agreement (incl.
 `strategy` / `budget` / `cache_policy` rejection) · response / result / observation schema roundtrip through
 `engine.run` (ok, partial, error, dry-run, rejected document) · exit code table · process-group kill of a grandchild
-· executable path not configurable · `check_contract` accepts the live contract · **15 drift fixtures**
+· executable path not configurable · OS registry rules from `tests/contract/os_registry_contract.json` (provides
+shape, one id per kind, documented collision published, denylist superset, recursive rejection) · error classes in
+results and contract · doctor per-Capability AVAILABLE / MISSING · `check_contract` accepts the live contract ·
+**21 drift fixtures**
 (`tests/contract/cases`: valid, unsupported schema, missing / extra tool, tool / capability / kind / kind_to_tool /
-version / schema-version / schema / invocation / provenance / exit-code mismatch) · `contract --check` CLI (file,
+version / schema-version / schema / invocation / provenance / exit-code mismatch, provides missing / renamed /
+bad lifecycle / extra kind, denylist narrowed, error class drift) · `contract --check` CLI (file,
 stdin, unreadable) · no confidence / judgement vocabulary in analyzers · batch identity independent of order.
 
 ## Integration tests (`tests/test_integration.py`, real ffmpeg)

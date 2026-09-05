@@ -1,0 +1,59 @@
+{
+  "source": "kajisho5/AI-video-production-OS registry/contract.py + docs/SKILL_SPEC.md sections 3.1, 8 + docs/CAPABILITY_MODEL.md (branch claude/ai-video-production-os-arch-fck6fy, 2026-09-05)",
+  "note": "Rules of the OS consumer, copied once; the media-analysis contract under test is generated from the implementation.",
+  "skill_identity": {
+    "accepted_shapes": [
+      "skill_id",
+      "skill.id",
+      "id"
+    ],
+    "rule": "flat skill_id is canonical when present"
+  },
+  "provides_entry": {
+    "required": [
+      "id",
+      "lifecycle",
+      "tool_id"
+    ],
+    "lifecycles": [
+      "PROPOSED",
+      "EXPERIMENTAL",
+      "STABLE",
+      "DEPRECATED",
+      "RETIRED"
+    ],
+    "extra_fields_permitted": [
+      "kind"
+    ],
+    "rule": "every real provides entry carries id, lifecycle, tool_id; Skill-specific extras are ignored by the registry"
+  },
+  "denylist": {
+    "canonical": [
+      "command",
+      "argv",
+      "shell",
+      "exec",
+      "filter_complex",
+      "filter",
+      "api_key",
+      "token",
+      "env"
+    ],
+    "rule": "a Skill may extend but never narrow the list; the check is recursive over nested parameter objects and rejects, never strips"
+  },
+  "conformance_checks": {
+    "publishes_contract": "contract entrypoint prints JSON with skill identity and well-formed provides",
+    "lifecycle_declared": "every provides entry has a valid 5-state lifecycle",
+    "doctor_status": "doctor prints AVAILABLE/MISSING per declared Capability",
+    "forbidden_keys_rejected": "denylisted keys at top level and nested are rejected with a structured error"
+  },
+  "known_collision": {
+    "ids": [
+      "measure.audio.loudness",
+      "measure.audio.silence",
+      "measure.audio.integrity"
+    ],
+    "other_provider": "qc-skill",
+    "rule": "same id from two Skills = one Capability with two Providers; the registry refuses to pick silently"
+  }
+}

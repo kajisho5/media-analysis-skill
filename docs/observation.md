@@ -37,8 +37,8 @@ was rejected before any request ran (invalid JSON, unknown batch / budget field)
 }
 ```
 
-A failed result: `"status": "error"`, `"error": {"code", "message", "details"}`, `"error_kind": "<code>"`, no
-`observation`; `analysis_id` / `asset_id` / `kind` are echoed when the request carried them as strings, else null.
+A failed result: `"status": "error"`, `"error": {"code", "message", "details", "class"}`, `"error_kind": "<code>"`,
+`"error_class": "FATAL | RETRYABLE | BLOCKED"`, no `observation`; `analysis_id` / `asset_id` / `kind` are echoed when the request carried them as strings, else null.
 `usage.operations` names what ran (executable + purpose), never argv.
 
 ## Observation
@@ -113,19 +113,23 @@ was rejected):
 ```
 
 Process exit code: 0 when every result is ok; otherwise the code of the first error, `2 + index` in the table
-(also published as `contract --json` → `errors.exit_codes`).
+(also published as `contract --json` → `errors.exit_codes`). Each code also carries a **class** (`errors.classes`)
+that tells a caller's retry policy what to do, following AI-video-production-OS `FAILURE_RECOVERY.md` section 2:
+`FATAL` (terminal: the unchanged request rejects identically, never retry), `RETRYABLE` (a bounded retry of the
+same request may succeed), `BLOCKED` (the environment or the caller's budget must change first). The class never
+changes a code's meaning or exit number.
 
 | exit | code | when |
 |---|---|---|
-| 2 | `INVALID_INPUT` | request / kind / parameter / stream ordinal / cache_policy / budget field invalid, command-style or unknown fields present, request document not JSON |
-| 3 | `FILE_NOT_FOUND` | input missing or not a regular file |
-| 4 | `PATH_NOT_ALLOWED` | input outside `--allowed-input` roots, or a write outside the workspace |
-| 5 | `UNSUPPORTED_FORMAT` | ffprobe cannot open the input, or the needed stream type is absent |
-| 6 | `ANALYZER_UNAVAILABLE` | ffmpeg / ffprobe / filter missing |
-| 7 | `ANALYZER_TIMEOUT` | analyzer exceeded the effective timeout (process group killed) |
-| 8 | `ANALYSIS_FAILED` | ffmpeg / ffprobe ran but failed or produced unparsable output |
-| 9 | `INVALID_RESULT` | analyzer returned something that is not an object |
-| 10 | `BUDGET_EXCEEDED` | call or total-seconds budget exhausted before running |
-| 11 | `CACHE_INVALID` | malformed cache key |
-| 12 | `VERIFICATION_FAILED` | Observation failed the checks above |
-| 13 | `CACHE_MISS` | `cache_policy: only` and no valid cache entry (no analyzer was run) |
+| 2 | `INVALID_INPUT` (FATAL) | request / kind / parameter / stream ordinal / cache_policy / budget field invalid, command-style or unknown fields present, request document not JSON |
+| 3 | `FILE_NOT_FOUND` (FATAL) | input missing or not a regular file |
+| 4 | `PATH_NOT_ALLOWED` (FATAL) | input outside `--allowed-input` roots, or a write outside the workspace |
+| 5 | `UNSUPPORTED_FORMAT` (FATAL) | ffprobe cannot open the input, or the needed stream type is absent |
+| 6 | `ANALYZER_UNAVAILABLE` (BLOCKED) | ffmpeg / ffprobe / filter missing |
+| 7 | `ANALYZER_TIMEOUT` (RETRYABLE) | analyzer exceeded the effective timeout (process group killed) |
+| 8 | `ANALYSIS_FAILED` (RETRYABLE) | ffmpeg / ffprobe ran but failed or produced unparsable output |
+| 9 | `INVALID_RESULT` (FATAL) | analyzer returned something that is not an object |
+| 10 | `BUDGET_EXCEEDED` (BLOCKED) | call or total-seconds budget exhausted before running |
+| 11 | `CACHE_INVALID` (FATAL) | malformed cache key |
+| 12 | `VERIFICATION_FAILED` (FATAL) | Observation failed the checks above |
+| 13 | `CACHE_MISS` (FATAL) | `cache_policy: only` and no valid cache entry (no analyzer was run) |

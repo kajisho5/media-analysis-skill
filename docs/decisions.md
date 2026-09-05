@@ -148,3 +148,27 @@
 - Additive: a new top-level `provides` key, verified against `contract_check.check_contract()` (reports zero
   problems with `provides` present - `check_contract` does not assert on this field, so nothing needed to change
   there) and against `evals/contract_evals.py`'s `C11_contract_registry_consistency`.
+
+## ADR-023 Error classes FATAL / RETRYABLE / BLOCKED, additive to codes
+- Context: AI-video-production-OS `FAILURE_RECOVERY.md` section 2 separates terminal failures (validation, security,
+  missing Provider) from bounded-retryable ones (timeout, transient process failure) and proposes that terminal ones
+  never consume a retry budget. A caller could derive that from our codes, but every caller would derive it
+  differently.
+- Decision: each error code carries a class, published in `contract --json` → `errors.classes` and on every error
+  (`error.class`, result / response `error_class`). Codes, messages and exit numbers are unchanged. `ANALYSIS_FAILED`
+  is RETRYABLE because a non-zero ffmpeg / ffprobe exit that is not a parameter error is the OS's "transient tool
+  failure" category; `CACHE_MISS` is FATAL because retrying `cache_policy: only` unchanged cannot succeed.
+
+## ADR-024 The OS denylist, applied recursively, in addition to the parameter schemas
+- Context: unknown parameter names were already `INVALID_INPUT`, so `api_key` inside `parameters` was rejected — but
+  as "unknown parameter", not as a security rejection, and only inside `parameters`. `SKILL_SPEC.md` section 3.1
+  asks for the canonical list (`command, argv, shell, exec, filter_complex, filter, api_key, token, env`) to be
+  rejected recursively and never narrowed.
+- Decision: `AnalysisRequest.FORBIDDEN_KEYS` is that list plus our own `args`, `cmd`; `forbidden_keys()` walks the
+  whole request document case-insensitively and reports the paths. The list is published under `security` in the
+  contract and drift-checked; a contract claiming a narrower list is a `contract --check` failure.
+
+## ADR-025 doctor reports per Capability, from `provides`
+- `doctor --json` → `capabilities[]` maps each published Capability id to AVAILABLE / MISSING through the tool that
+  implements it. This is derived from `provides` and the analyzer availability rows, never a separate table, so it
+  cannot disagree with the contract.
