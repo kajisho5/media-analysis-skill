@@ -215,6 +215,16 @@ document itself was rejected); without `--json`, one line on stderr. The table i
   `contract@2` would be a different `schema` value and is refused by `--check` of a `@1` implementation. Stable
   identifiers for the video-production-agent adapter: `skill_id`, `version`, `tools[].tool_id`, `tools[].version`,
   `tools[].required_capabilities`, `tools[].kinds`, `kind_to_tool`, `errors.exit_codes`.
+- `contract --json` → `provides`: five of this Skill's nine analysis kinds by their cross-repository Capability id
+  (`silence` -> `measure.audio.silence`, `loudness` -> `measure.audio.loudness`, `integrity` -> `measure.audio.integrity`,
+  `scene_detection` -> `measure.video.scene_detection`, `timing` -> `measure.video.timing`), matching the ids assigned
+  to this Skill in [`kajisho5/AI-video-production-OS`](https://github.com/kajisho5/AI-video-production-OS)'s
+  `docs/CAPABILITY_MATRIX.md`. The other four kinds (`media_probe`, `stream_layout`, `video_format`, `audio_format`,
+  `duration`) are intentionally not in `provides` yet - that project's own matrix has not settled a single id for
+  them (see `docs/decisions.md` ADR-022). `silence`/`loudness`/`integrity` are also independently implemented by
+  `qc-skill`, which publishes the identical ids: this is that project's one documented Capability collision, and the
+  two Skills agreeing on the id with no shared code is what lets a future registry see it as one Capability with two
+  Providers instead of two unrelated things that happen to share a name.
 
 ## Development
 

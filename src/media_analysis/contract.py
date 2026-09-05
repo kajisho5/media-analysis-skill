@@ -92,6 +92,38 @@ TOOL_CAPABILITIES: Dict[str, List[str]] = {
 }
 
 
+# Cross-repository Capability ids (kajisho5/AI-video-production-OS docs/SPEC.md
+# `CapabilityContract.provides`), matching the ids already assigned to these analysis
+# kinds in that project's own docs/CAPABILITY_MATRIX.md section 8. Three of these
+# (measure.audio.loudness, measure.audio.silence, measure.audio.integrity) are the
+# ecosystem's one documented Capability collision: qc-skill independently implements the
+# same three measurements and publishes the identical id for each in its own
+# contract.py, so a registry sees one Capability with two Providers, not two unrelated
+# things that happen to share a name.
+#
+# Deliberately incomplete: `media_probe`, `stream_layout`, `video_format`, `audio_format`
+# and `duration` have no entry here. CAPABILITY_MATRIX.md's own section 8c leaves their
+# id unsettled (its note bundles them as "measure.video.probe / measure.*.format /
+# measure.*.duration" without pinning one id per kind), and that same document is
+# explicit that `video_format` is *not* the same capability as qc-skill's
+# `measure.video.format` ("a related-but-distinct capability, not the same id, pending
+# further audit") - so guessing an id here risks publishing a false collision the matrix
+# has already ruled out. These five kinds stay unassigned until that matrix decision is
+# made, rather than forcing five new ids into existence in this PR.
+CAPABILITY_IDS: Dict[str, str] = {
+    "silence": "measure.audio.silence",
+    "loudness": "measure.audio.loudness",
+    "integrity": "measure.audio.integrity",
+    "scene_detection": "measure.video.scene_detection",
+    "timing": "measure.video.timing",
+}
+
+
+def capability_provides() -> List[Dict[str, str]]:
+    return [{"id": CAPABILITY_IDS[kind], "lifecycle": "EXPERIMENTAL", "tool_id": tool_id(KIND_TO_TOOL[kind]), "kind": kind}
+            for kind in sorted(CAPABILITY_IDS)]
+
+
 def tool_id(tool: str) -> str:
     return f"{SKILL_ID}/{tool}"
 
@@ -135,6 +167,7 @@ def skill_contract() -> Dict[str, Any]:
         "capabilities": ["ffprobe"],   # the whole package needs ffprobe; ffmpeg + filters are per tool
         "capability_names": sorted({c for a in analyzers for c in a.required_capabilities}),
         "tools": tools,
+        "provides": capability_provides(),
         "analysis_kinds": kinds,
         "kind_to_tool": {k: tool_id(t) for k, t in KIND_TO_TOOL.items()},
         "execution": {

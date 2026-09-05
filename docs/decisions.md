@@ -117,3 +117,24 @@
 - Observations carry measurements against recorded parameters. A `confidence` value would read as "probability the
   agent should act", which is inference. Scores that are measurements (`cut_score`, `probe_score`) keep their
   measurement names. A static test forbids confidence / recommendation vocabulary in the analyzers.
+
+## ADR-022 `provides` publishes five analysis kinds as cross-repository Capability ids, deliberately not all nine
+- `contract.py` adds a top-level `provides` list for `kajisho5/AI-video-production-OS`'s `CapabilityContract.provides`
+  (`docs/SPEC.md` there), so a registry can resolve "who provides `measure.audio.loudness`" without hardcoding this
+  repository. Five kinds get an id, matching that project's own `docs/CAPABILITY_MATRIX.md` section 8 exactly:
+  `silence` -> `measure.audio.silence`, `loudness` -> `measure.audio.loudness`, `integrity` -> `measure.audio.integrity`,
+  `scene_detection` -> `measure.video.scene_detection`, `timing` -> `measure.video.timing`.
+- Three of those five (`silence`, `loudness`, `integrity`) are the ecosystem's one documented Capability collision:
+  `qc-skill` independently implements the same three measurements with no shared code and publishes the identical id
+  for each in its own `contract.py` (companion PR), so a registry sees one Capability with two Providers, not two
+  unrelated things that happen to share a name.
+- `media_probe`, `stream_layout`, `video_format`, `audio_format` and `duration` are deliberately not in `provides`.
+  `CAPABILITY_MATRIX.md`'s own section 8c leaves their id unsettled - its note bundles them as "measure.video.probe /
+  measure.\*.format / measure.\*.duration" without pinning one id per kind - and that document is explicit that this
+  Skill's `video_format` is *not* the same capability as `qc-skill`'s `measure.video.format` ("a related-but-distinct
+  capability, not the same id, pending further audit"). Guessing an id here would risk publishing a false collision
+  that document has already ruled out, so these five kinds stay unassigned until that matrix decision is made rather
+  than forcing five new ids into existence in this change.
+- Additive: a new top-level `provides` key, verified against `contract_check.check_contract()` (reports zero
+  problems with `provides` present - `check_contract` does not assert on this field, so nothing needed to change
+  there) and against `evals/contract_evals.py`'s `C11_contract_registry_consistency`.
