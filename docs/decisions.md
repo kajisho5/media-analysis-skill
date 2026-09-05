@@ -172,3 +172,13 @@
 - `doctor --json` → `capabilities[]` maps each published Capability id to AVAILABLE / MISSING through the tool that
   implements it. This is derived from `provides` and the analyzer availability rows, never a separate table, so it
   cannot disagree with the contract.
+
+## ADR-026 The JSON protocol is UTF-8 bytes, not the platform text encoding
+- Context: `print(json.dumps(..., ensure_ascii=False))` went through Python's text layer, whose encoding on a
+  Windows pipe is cp1252 (cp932 on a Japanese console). A Japanese file name in `asset.path` raised
+  `UnicodeEncodeError`: no document on stdout, a traceback on stderr, exit 1 — the protocol was broken exactly for the
+  media this Skill exists for. Reproduced with `PYTHONIOENCODING=cp1252` on Linux.
+- Decision: `--json` output is written to `sys.stdout.buffer` as UTF-8; stdin request documents are read from
+  `sys.stdin.buffer` and decoded as UTF-8 (`INVALID_INPUT` if they are not); human-readable streams are reconfigured
+  with `errors="backslashreplace"` so they degrade instead of crashing. The contract's `execution.stdin` /
+  `execution.stdout` state UTF-8. `ensure_ascii=False` is kept so paths stay readable.

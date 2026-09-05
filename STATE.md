@@ -10,7 +10,7 @@ Last updated: 2026-09-05 (autonomous maintenance session). Version 0.1.0, contra
 - OS integration (additive): `provides` publishes 10 Capability ids matching AI-video-production-OS
   `CAPABILITY_MATRIX.md`; denylist is a superset of `SKILL_SPEC.md` 3.1 and recursive; OS registry rules recorded
   in `tests/contract/os_registry_contract.json`; agent rules in `tests/contract/agent_skill_package_contract.json`.
-- Tests: 103 (pytest), measurement evals 9/9, contract evals 17/17; CI on Linux 3.9 / 3.11, Windows, macOS with real FFmpeg.
+- Tests: 104 (pytest), measurement evals 9/9, contract evals 17/17; CI on Linux 3.9 / 3.11, Windows, macOS with real FFmpeg.
 - Distribution: `pip install -e .` from a clone. **Not on PyPI, no git tags / GitHub releases yet.**
 
 ## KNOWN LIMITATIONS
@@ -32,4 +32,5 @@ AI / inference / decisions, media editing, subtitles, transcription, semantic sc
 
 ## Recent history
 - PR #1 Skill 0.1.0 + agent-ready contract (merged), PR #2 sponsor funnel, PR #3 README landing page,
-  PR #4 `provides` (from another session; verified here with real FFmpeg and merged), PR #5 OS conformance hardening.
+  PR #4 `provides` (from another session; verified here with real FFmpeg and merged), PR #5 OS conformance hardening,
+  PR #6 UTF-8 JSON protocol for non-ASCII paths (ADR-026, stacked on #5).

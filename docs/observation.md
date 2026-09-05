@@ -21,7 +21,9 @@ versions). The same documents are what a future MCP transport would carry (trans
 }
 ```
 
-`status` is `ok` when every result is ok, `partial` when some are, `error` when none are or the request document
+The document is always written as **UTF-8 bytes**, independent of the console or pipe encoding, and request
+documents on stdin are read as UTF-8; a non-ASCII file name (e.g. Japanese) therefore round-trips on a cp932 or
+cp1252 Windows pipe exactly as on Linux. `status` is `ok` when every result is ok, `partial` when some are, `error` when none are or the request document
 was rejected before any request ran (invalid JSON, unknown batch / budget field). `dry_run: true` results carry a
 `plan` instead of an `observation`.
 

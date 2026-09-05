@@ -1,8 +1,10 @@
 """media-analysis CLI.
 
 stdout contract: with --json, stdout carries exactly one response document (schemas.RESPONSE_SCHEMA) and nothing
-else, on success and on failure alike; without --json, stdout is human-readable text. stderr is diagnostics only.
-Exit code: 0 when every result is ok, otherwise the exit code of the first error (errors.EXIT_CODES)."""
+else, on success and on failure alike, always encoded as UTF-8 regardless of the console / pipe encoding (a Japanese
+file name on a cp932 or cp1252 pipe must not break the protocol); without --json, stdout is human-readable text.
+stderr is diagnostics only. Exit code: 0 when every result is ok, otherwise the exit code of the first error
+(errors.EXIT_CODES)."""
 from __future__ import annotations
 
 import argparse
@@ -24,6 +26,37 @@ from .errors import AnalysisError
 from .registry import default_registry
 from .schemas import CACHE_POLICIES, contract_refs
 from .security import PathPolicy
+
+
+def emit_json(doc: Any) -> None:
+    """Write one JSON document to stdout as UTF-8 bytes. Bypasses the text layer so the platform / pipe encoding
+    (cp1252 on Windows pipes, cp932 on Japanese consoles) can never raise or mangle non-ASCII paths."""
+    data = (json.dumps(doc, indent=2, ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
+    out = getattr(sys.stdout, "buffer", None)
+    if out is not None:
+        sys.stdout.flush()
+        out.write(data)
+        out.flush()
+    else:                                   # a replaced text stream (tests, embedding): best effort, never crash
+        sys.stdout.write(data.decode("utf-8"))
+        sys.stdout.flush()
+
+
+def _read_stdin_utf8() -> str:
+    """Request documents are UTF-8 by contract, whatever the console encoding says."""
+    buf = getattr(sys.stdin, "buffer", None)
+    return buf.read().decode("utf-8") if buf is not None else sys.stdin.read()
+
+
+def _tolerant_text_streams() -> None:
+    """Human-readable output must never crash on a character the console cannot encode."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(errors="backslashreplace")
+            except (ValueError, TypeError):
+                pass
 
 
 def _add_common(ap: argparse.ArgumentParser) -> None:
@@ -120,9 +153,11 @@ def _document(args: argparse.Namespace) -> Any:
                  "analysis_id": args.analysis_id, "output_policy": {"round": args.round}, **common} for kind in args.kind]
     if args.cmd == "run":
         try:
-            text = sys.stdin.read() if args.request == "-" else open(args.request, "r", encoding="utf-8").read()
+            text = _read_stdin_utf8() if args.request == "-" else open(args.request, "r", encoding="utf-8").read()
         except OSError as e:
             raise AnalysisError("FILE_NOT_FOUND", f"cannot read request document: {e}")
+        except UnicodeDecodeError as e:
+            raise AnalysisError("INVALID_INPUT", f"request document is not UTF-8: {e}")
         try:
             return json.loads(text)
         except ValueError as e:
@@ -255,7 +290,7 @@ def _print_doctor(doc: Dict[str, Any]) -> None:
 def _contract(as_json: bool, check: Optional[str] = None) -> int:
     if check is not None:
         try:
-            text = sys.stdin.read() if check == "-" else open(check, "r", encoding="utf-8").read()
+            text = _read_stdin_utf8() if check == "-" else open(check, "r", encoding="utf-8").read()
             saved = json.loads(text)
         except (OSError, ValueError) as e:
             problems = [f"contract: cannot read document: {e}"]
@@ -264,7 +299,7 @@ def _contract(as_json: bool, check: Optional[str] = None) -> int:
         report = {"schema": "media-analysis/contract-check@1", "skill": {"id": SKILL_ID, "version": VERSION}, "status": "ok" if not problems else "drift",
                   "supported_schemas": ["media-analysis/contract@1"], "problems": problems}
         if as_json:
-            print(json.dumps(report, indent=2))
+            emit_json(report)
         else:
             print(f"contract check: {report['status']}")
             for p in problems:
@@ -272,7 +307,7 @@ def _contract(as_json: bool, check: Optional[str] = None) -> int:
         return 0 if not problems else 1
     doc = skill_contract()
     if as_json:
-        print(json.dumps(doc, indent=2))
+        emit_json(doc)
     else:
         print(f"{doc['skill_id']} {doc['version']} ({doc['package']}) — {doc['description']}")
         for t in doc["tools"]:
@@ -284,10 +319,11 @@ def _contract(as_json: bool, check: Optional[str] = None) -> int:
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     as_json = bool(getattr(args, "json", False))
+    _tolerant_text_streams()
     if args.cmd == "doctor":
         doc = doctor_report(args.workspace, args.cache_dir, args.allowed_input)
         if as_json:
-            print(json.dumps(doc, indent=2))
+            emit_json(doc)
         else:
             _print_doctor(doc)
         return 0 if doc["status"] != "fail" else 1
@@ -302,7 +338,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         response = engine.run(document, dry_run=args.dry_run)
     code = exit_code_for(response)
     if as_json:
-        print(json.dumps(response, indent=2, ensure_ascii=False, allow_nan=False))
+        emit_json(response)
     else:
         if response.get("error"):
             sys.stderr.write(f"error [{response['error']['code']}]: {response['error']['message']}" + (f" {json.dumps(response['error']['details'])}" if response["error"]["details"] else "") + "\n")

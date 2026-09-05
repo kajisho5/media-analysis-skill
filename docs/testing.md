@@ -2,7 +2,7 @@
 
 ```text
 pip install -e . pytest
-python -m pytest -q               # 103 tests: unit + contract + integration + evals
+python -m pytest -q               # 104 tests: unit + contract + integration + evals
 python evals/run.py               # 9 measurement eval cases with expected values and tolerances
 python evals/contract_evals.py    # 17 contract eval cases
 ```
@@ -76,7 +76,8 @@ one parseable error response each, stderr empty) · absolute vs relative input (
 timeout inside a batch keeps the protocol (partial response, others served, no cache entry, no ffmpeg left) ·
 **real-media matrix**: all 10 kinds × 10 fixtures validated against the schemas, expected `UNSUPPORTED_FORMAT` for
 audio kinds on video-only and video kinds on audio-only media, second pass served from cache except the
-never-cached errors · determinism across two processes.
+never-cached errors · determinism across two processes · **non-ASCII (Japanese) file name over cp1252 / cp932 / ascii pipes**: JSON
+protocol, human mode, stdin request and error documents all survive.
 
 ## Contract evals (`evals/contract_evals.py`, `tests/test_evals.py`)
 
