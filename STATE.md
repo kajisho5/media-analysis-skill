@@ -9,6 +9,11 @@ Last updated: 2026-09-05 (autonomous maintenance session). Version 0.1.0, contra
   detection with 21 mutation fixtures, `doctor --json` with per-Capability AVAILABLE / MISSING.
 - Self-conformance: `conformance --json` runs all 8 AI-video-production-OS `SKILL_SPEC.md` section 8 checks against
   this installation (real requests + real source scan), each proven to actually detect a broken implementation.
+  Manually cross-verified (not a committed test / dependency) against the OS's own real `registry/` code on its
+  `main` branch (now merged there): `registry.CapabilityRegistry.register_contract(skill_contract())` succeeds,
+  `providers_of("measure.audio.loudness")` resolves this Skill, and the OS's own
+  `conformance.check_publishes_contract` / `check_lifecycle_declared` pass against our real contract document —
+  not just our own reimplementation of those rules in `tests/contract/os_registry_contract.json`.
 - OS integration (additive): `provides` publishes 10 Capability ids matching AI-video-production-OS
   `CAPABILITY_MATRIX.md`; denylist is a superset of `SKILL_SPEC.md` 3.1 and recursive; OS registry rules recorded
   in `tests/contract/os_registry_contract.json`; agent rules in `tests/contract/agent_skill_package_contract.json`.
