@@ -3,6 +3,7 @@ skipped: a missing FFmpeg fails the session."""
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -422,3 +423,34 @@ def test_deterministic_result_across_processes(media, tmp_path):
         assert o1["asset"] == o2["asset"] and o1["source"] == o2["source"] and o1["analysis"]["parameters"] == o2["analysis"]["parameters"]
     text = json.dumps(docs[0])
     assert str(tmp_path / "c") not in text and "pid" not in text.lower()
+
+
+def test_non_ascii_path_on_non_utf8_pipe(media, tmp_path):
+    """A Japanese file name must round-trip through the JSON protocol even when the pipe encoding is cp1252 / cp932
+    (Windows default for redirected stdout). Before the fix this raised UnicodeEncodeError and printed no JSON."""
+    import shutil
+    name = "会議_収録 テスト.mp4"
+    target = tmp_path / name
+    shutil.copy(media["av"], target)
+    for enc in ("cp1252", "cp932", "ascii"):
+        env = dict(os.environ, PYTHONIOENCODING=enc)
+        env.pop("PYTHONUTF8", None)
+        r = subprocess.run([sys.executable, "-m", "media_analysis.cli", "analyze", str(target), "--kind", "duration", "--json"], cwd=str(tmp_path),
+                           env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        doc = json.loads(r.stdout.decode("utf-8"))
+        assert r.returncode == 0 and doc["status"] == "ok" and r.stderr == b"", (enc, r.stderr[-300:])
+        assert doc["observations"][0]["asset"]["path"] == str(target.resolve()) and name in doc["observations"][0]["asset"]["path"]
+        # human-readable mode never crashes either (unencodable characters are escaped, not fatal)
+        r = subprocess.run([sys.executable, "-m", "media_analysis.cli", "probe", str(target)], cwd=str(tmp_path), env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        assert r.returncode == 0 and b"[media_probe]" in r.stdout, (enc, r.stderr[-300:])
+        # request document with the non-ASCII path, over stdin
+        req = json.dumps({"asset_id": "a", "input": str(target), "kind": "media_probe"}, ensure_ascii=False).encode("utf-8")
+        r = subprocess.run([sys.executable, "-m", "media_analysis.cli", "run", "-", "--json"], cwd=str(tmp_path), env=env, input=req, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        doc = json.loads(r.stdout.decode("utf-8"))
+        assert r.returncode == 0 and doc["status"] == "ok", (enc, r.stderr[-300:])
+    # error documents carry the path too and must survive the same way
+    env = dict(os.environ, PYTHONIOENCODING="ascii")
+    r = subprocess.run([sys.executable, "-m", "media_analysis.cli", "analyze", str(tmp_path / "無い.mp4"), "--kind", "duration", "--json"], cwd=str(tmp_path),
+                       env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    doc = json.loads(r.stdout.decode("utf-8"))
+    assert r.returncode == 3 and doc["results"][0]["error_kind"] == "FILE_NOT_FOUND" and "無い" in doc["results"][0]["error"]["message"]

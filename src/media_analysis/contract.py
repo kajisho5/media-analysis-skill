@@ -180,8 +180,8 @@ def skill_contract() -> Dict[str, Any]:
         "execution": {
             "mode": "local_subprocess",
             "canonical_invocation": ["media-analysis", "run", "<request.json | ->", "--json"],
-            "stdin": "AnalysisRequest JSON when the request argument is '-'",
-            "stdout": "exactly one response document (response schema) when --json is given",
+            "stdin": "AnalysisRequest JSON (UTF-8) when the request argument is '-'",
+            "stdout": "exactly one response document (response schema) when --json is given; always UTF-8, independent of the console / pipe encoding",
             "stderr": "diagnostics only; never part of the contract",
             "executables": ["ffprobe", "ffmpeg"],
             "executable_resolution": "PATH lookup only; not configurable through the request or the CLI",
