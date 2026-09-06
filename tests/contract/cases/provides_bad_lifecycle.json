@@ -1,0 +1,15 @@
+{
+  "id": "provides_bad_lifecycle",
+  "description": "a lifecycle outside the OS 5-state model",
+  "mutations": [
+    {
+      "op": "set_provides_field",
+      "kind": "timing",
+      "field": "lifecycle",
+      "value": "BETA"
+    }
+  ],
+  "expect_problems": [
+    "provides: malformed entry"
+  ]
+}

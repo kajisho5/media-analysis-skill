@@ -188,7 +188,7 @@ class AnalysisEngine:
         d = doc if isinstance(doc, dict) else {}
         ident = lambda v: v if isinstance(v, str) else None  # noqa: E731
         return {"analysis_id": ident(d.get("analysis_id")), "asset_id": ident(d.get("asset_id")), "kind": ident(d.get("kind")), "status": "error",
-                "error": e.to_dict(), "error_kind": e.code,
+                "error": e.to_dict(), "error_kind": e.code, "error_class": e.error_class,
                 "cache": {"status": "disabled" if e.code != "CACHE_MISS" else e.details.get("cache_status", "miss"), "policy": d.get("cache_policy") if d.get("cache_policy") in ("use", "bypass", "only") else "use",
                           "key": e.details.get("cache_key") if e.code == "CACHE_MISS" else None},
                 "usage": _usage(0, 0.0)}
@@ -198,7 +198,7 @@ class AnalysisEngine:
         """Response document for a failure that happened before any engine existed (e.g. CLI argument errors)."""
         return {"schema": RESPONSE_SCHEMA_ID, "skill": {"id": SKILL_ID, "version": VERSION}, "status": "error", "dry_run": False, "results": [], "observations": [],
                 "usage": {"analyzer_calls": 0, "cache_hits": 0, "seconds": 0.0}, "budget": BudgetTracker(Budget()).state(), "warnings": [],
-                "error": error.to_dict(), "error_kind": error.code}
+                "error": error.to_dict(), "error_kind": error.code, "error_class": error.error_class}
 
     def _response(self, results: List[Dict[str, Any]], warnings: List[str], error: Optional[AnalysisError] = None, dry_run: bool = False) -> Dict[str, Any]:
         ok = [r for r in results if r["status"] == "ok"]
@@ -213,6 +213,7 @@ class AnalysisEngine:
         if error is not None:
             doc["error"] = error.to_dict()
             doc["error_kind"] = error.code
+            doc["error_class"] = error.error_class
         return doc
 
 

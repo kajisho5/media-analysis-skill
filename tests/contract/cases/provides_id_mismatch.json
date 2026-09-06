@@ -1,0 +1,15 @@
+{
+  "id": "provides_id_mismatch",
+  "description": "a Capability id renamed away from the implementation",
+  "mutations": [
+    {
+      "op": "set_provides_field",
+      "kind": "silence",
+      "field": "id",
+      "value": "measure.audio.quiet"
+    }
+  ],
+  "expect_problems": [
+    "provides[silence]"
+  ]
+}

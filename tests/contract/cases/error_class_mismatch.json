@@ -1,0 +1,16 @@
+{
+  "id": "error_class_mismatch",
+  "description": "retry guidance drifted",
+  "mutations": [
+    {
+      "op": "set_map_nested",
+      "path": "errors",
+      "key": "classes",
+      "subkey": "ANALYZER_TIMEOUT",
+      "value": "FATAL"
+    }
+  ],
+  "expect_problems": [
+    "errors.classes"
+  ]
+}

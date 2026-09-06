@@ -22,6 +22,27 @@ ERROR_CODES = (
 # process exit codes for the CLI (stable part of the contract)
 EXIT_CODES = {code: i + 2 for i, code in enumerate(ERROR_CODES)}
 
+# Failure classes for a caller's retry policy (AI-video-production-OS docs/FAILURE_RECOVERY.md section 2):
+#   FATAL      terminal for this request: retrying the unchanged request rejects identically (validation, security,
+#              deterministic analysis failure, verification)
+#   RETRYABLE  a bounded retry of the same request may succeed (timeout, transient process failure)
+#   BLOCKED    the environment or the caller's budget must change first (missing executable / filter, budget exhausted)
+ERROR_CLASSES = ("FATAL", "RETRYABLE", "BLOCKED")
+ERROR_CLASS_OF = {
+    "INVALID_INPUT": "FATAL",
+    "FILE_NOT_FOUND": "FATAL",
+    "PATH_NOT_ALLOWED": "FATAL",
+    "UNSUPPORTED_FORMAT": "FATAL",
+    "ANALYZER_UNAVAILABLE": "BLOCKED",
+    "ANALYZER_TIMEOUT": "RETRYABLE",
+    "ANALYSIS_FAILED": "RETRYABLE",
+    "INVALID_RESULT": "FATAL",
+    "BUDGET_EXCEEDED": "BLOCKED",
+    "CACHE_INVALID": "FATAL",
+    "VERIFICATION_FAILED": "FATAL",
+    "CACHE_MISS": "FATAL",
+}
+
 
 class AnalysisError(Exception):
     def __init__(self, code: str, message: str, details: Optional[Dict[str, Any]] = None):
@@ -32,8 +53,12 @@ class AnalysisError(Exception):
         self.message = message
         self.details = dict(details or {})
 
+    @property
+    def error_class(self) -> str:
+        return ERROR_CLASS_OF[self.code]
+
     def to_dict(self) -> Dict[str, Any]:
-        return {"code": self.code, "message": self.message, "details": self.details}
+        return {"code": self.code, "message": self.message, "details": self.details, "class": self.error_class}
 
     @property
     def exit_code(self) -> int:

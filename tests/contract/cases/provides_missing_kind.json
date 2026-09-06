@@ -1,0 +1,13 @@
+{
+  "id": "provides_missing_kind",
+  "description": "an analysis kind without a Capability id",
+  "mutations": [
+    {
+      "op": "delete_provides",
+      "kind": "loudness"
+    }
+  ],
+  "expect_problems": [
+    "provides: analysis kind loudness has no Capability id"
+  ]
+}

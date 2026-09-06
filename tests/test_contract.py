@@ -292,3 +292,128 @@ def test_batch_identity_independent_of_order(tmp_path):
     assert f[("asset-a", "an-a")]["asset"]["fingerprint"] != f[("asset-b", "an-b")]["asset"]["fingerprint"]
     assert f[("asset-a", "an-a")]["id"] == f[("asset-a2", "analysis-" + f[("asset-a", "an-a")]["analysis"]["identity"][:16])]["id"]   # same file, same identity
     assert [x["asset_id"] for x in fwd["observations"]] == ["asset-a", "asset-b", "asset-a2"]
+
+
+# ---- AI-video-production-OS registry / conformance rules (tests/contract/os_registry_contract.json)
+OS_RULES = json.loads((Path(__file__).parent / "contract" / "os_registry_contract.json").read_text(encoding="utf-8"))
+
+
+def test_os_registry_provides_rules():
+    c = skill_contract()
+    assert c["skill_id"] and "skill_id" in OS_RULES["skill_identity"]["accepted_shapes"]
+    provides = c["provides"]
+    assert [e["kind"] for e in provides] == sorted(ANALYSIS_KINDS) and len(provides) == 10
+    ids = [e["id"] for e in provides]
+    assert len(set(ids)) == len(ids)
+    tool_ids = {t["tool_id"] for t in c["tools"]}
+    for e in provides:
+        for f in OS_RULES["provides_entry"]["required"]:
+            assert isinstance(e[f], str) and e[f]
+        assert e["lifecycle"] in OS_RULES["provides_entry"]["lifecycles"]
+        assert e["tool_id"] in tool_ids and c["kind_to_tool"][e["kind"]] == e["tool_id"]
+        assert set(e) <= set(OS_RULES["provides_entry"]["required"]) | set(OS_RULES["provides_entry"]["extra_fields_permitted"])
+    for cid in OS_RULES["known_collision"]["ids"]:
+        assert cid in ids                                    # the documented collision with qc-skill is published, not hidden
+
+
+def test_os_denylist_is_a_superset_and_recursive():
+    from media_analysis.contract import AnalysisRequest, forbidden_keys
+    assert set(OS_RULES["denylist"]["canonical"]) <= set(AnalysisRequest.FORBIDDEN_KEYS)
+    assert skill_contract()["security"]["forbidden_keys"] == list(AnalysisRequest.FORBIDDEN_KEYS)
+    doc = {"asset_id": "a", "input": "x", "kind": "silence", "parameters": {"threshold_db": -40, "Filter": "x", "deep": {"token": 1}}, "list": [{"ENV": {}}]}
+    assert forbidden_keys(doc, AnalysisRequest.FORBIDDEN_KEYS) == ["parameters.Filter", "parameters.deep.token", "list[0].ENV"]
+    with pytest.raises(AnalysisError) as e:
+        AnalysisRequest.from_dict(doc)
+    assert e.value.code == "INVALID_INPUT" and e.value.details["fields"] == ["parameters.Filter", "parameters.deep.token", "list[0].ENV"]
+
+
+def test_error_class_in_results(tmp_path):
+    from test_unit import CountingAnalyzer, FakeRegistry, fake_caps
+    f = tmp_path / "a.bin"
+    f.write_bytes(b"media")
+    eng = AnalysisEngine(caps=fake_caps("ffprobe"), registry=FakeRegistry(CountingAnalyzer()), budget=Budget(max_analysis_calls=0))
+    doc = eng.run({"requests": [{"asset_id": "a", "input": str(f), "kind": "media_probe"}, {"asset_id": "a", "input": str(tmp_path / "nope"), "kind": "media_probe"}]})
+    assert [r["error_class"] for r in doc["results"]] == ["BLOCKED", "FATAL"]
+    assert all(r["error"]["class"] == r["error_class"] for r in doc["results"])
+    assert validate(doc, RESPONSE_SCHEMA, REFS) == []
+    err = eng.run("nope")
+    assert err["error_class"] == "FATAL" and err["error"]["class"] == "FATAL"
+    c = skill_contract()
+    assert c["errors"]["classes"] == {code: c["errors"]["classes"][code] for code in ERROR_CODES} and set(c["errors"]["class_semantics"]) == {"FATAL", "RETRYABLE", "BLOCKED"}
+
+
+def test_doctor_reports_per_capability(tmp_path):
+    from media_analysis.cli import doctor_report
+    doc = doctor_report(workspace=str(tmp_path))
+    caps = {c["id"]: c for c in doc["capabilities"]}
+    assert set(caps) == {e["id"] for e in skill_contract()["provides"]}
+    for c in caps.values():
+        assert c["status"] in ("AVAILABLE", "MISSING") and c["lifecycle"] == "EXPERIMENTAL" and c["tool_id"].startswith("media-analysis/")
+        assert (c["status"] == "AVAILABLE") == (not c["missing"])
+    if doc["status"] == "ok":
+        assert all(c["status"] == "AVAILABLE" for c in caps.values())
+
+
+# ---- self-conformance against AI-video-production-OS SKILL_SPEC.md section 8 (tests/conformance.py)
+def test_conformance_all_pass_or_honestly_not_implemented():
+    from media_analysis.conformance import CHECKS, run_conformance
+    doc = run_conformance()
+    assert doc["schema"] == "media-analysis/conformance@1" and doc["status"] == "ok"
+    assert {c["check"] for c in doc["checks"]} == set(CHECKS)
+    statuses = {c["check"]: c["status"] for c in doc["checks"]}
+    assert statuses["no_clobber_input"] == "NOT_IMPLEMENTED" and statuses["dependency_version_ranges"] == "NOT_IMPLEMENTED"
+    for c in doc["checks"]:
+        assert c["status"] in ("PASS", "NOT_IMPLEMENTED") and c["detail"]   # no silent FAIL, no empty detail
+
+
+def test_conformance_checks_actually_detect_failure():
+    """Each check that can fail must actually fail on a broken input, not just pass unconditionally."""
+    import media_analysis.conformance as conf
+
+    class BadRequest(dict):
+        pass
+
+    # forbidden_keys_rejected: prove the detector notices a broken implementation that silently accepts the request
+    from media_analysis.contract import AnalysisRequest
+    orig_from_dict = AnalysisRequest.from_dict
+    AnalysisRequest.from_dict = classmethod(lambda cls, d: object())  # simulates a validator that stopped rejecting anything
+    try:
+        r = conf.check_forbidden_keys_rejected()
+        assert r.status == "FAIL"
+    finally:
+        AnalysisRequest.from_dict = orig_from_dict
+
+    # workspace_confinement: a PathPolicy stub that accepts everything must be caught
+    import media_analysis.security as security_mod
+
+    class LeakyPolicy:
+        def __init__(self, workspace=None):
+            pass
+
+        def resolve_write_dir(self, path):
+            return Path(path)
+
+    real_policy = security_mod.PathPolicy
+    conf.PathPolicy = LeakyPolicy
+    try:
+        r = conf.check_workspace_confinement()
+        assert r.status == "FAIL"
+    finally:
+        conf.PathPolicy = real_policy
+
+    # no_unsafe_shell_out: an actual shell=True in a scanned file must be caught
+    tmp_file = Path(conf.__file__).resolve().parent / "_conformance_scan_probe.py"
+    tmp_file.write_text("import subprocess\nsubprocess.run('ls', shell=True)\n")
+    try:
+        r = conf.check_no_unsafe_shell_out()
+        assert r.status == "FAIL" and "_conformance_scan_probe.py" in r.detail
+    finally:
+        tmp_file.unlink()
+
+
+def test_conformance_cli_smoke(tmp_path):
+    r = subprocess.run([sys.executable, "-m", "media_analysis.cli", "conformance", "--json"], cwd=str(tmp_path), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    doc = json.loads(r.stdout)
+    assert r.returncode == 0 and doc["status"] == "ok" and r.stderr == ""
+    r = subprocess.run([sys.executable, "-m", "media_analysis.cli", "conformance"], cwd=str(tmp_path), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    assert r.returncode == 0 and r.stdout.startswith("conformance (")

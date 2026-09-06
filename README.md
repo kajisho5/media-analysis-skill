@@ -50,6 +50,7 @@ cat request.json | media-analysis run - --json  # same, over stdin
 media-analysis doctor --json                    # environment vs. contract: python, ffmpeg, ffprobe, filters, registry, cache, path policy
 media-analysis contract --json                  # machine-readable Skill / Tool contract with request / response / observation schemas
 media-analysis contract --check saved.json      # does a saved contract still describe this installation? (drift detection, exit 1 on drift)
+media-analysis conformance --json               # AI-video-production-OS SKILL_SPEC.md section 8 self-checks (forbidden keys, shell-out, workspace confinement, ...)
 ```
 
 Everything runs locally; nothing is uploaded. Ten analysis kinds, one response schema, exit codes an adapter can
@@ -199,7 +200,9 @@ Step-by-step adapter recipe: [docs/architecture.md](docs/architecture.md#connect
 | 7 | `ANALYZER_TIMEOUT` | | |
 
 With `--json` every error is inside the response document (per result, or `error` / `error_kind` at the top when the
-document itself was rejected); without `--json`, one line on stderr. The table is also in `contract --json` → `errors`.
+document itself was rejected); without `--json`, one line on stderr. Every error also carries a class for the
+caller's retry policy: `FATAL` (never retry unchanged), `RETRYABLE` (bounded retry may succeed), `BLOCKED`
+(environment or budget must change). The tables are in `contract --json` → `errors`.
 
 ## Versioning
 

@@ -99,7 +99,9 @@ OBSERVATION_SCHEMA: Dict[str, Any] = {
 
 ERROR_SCHEMA: Dict[str, Any] = {
     "type": "object", "additionalProperties": False, "required": ["code", "message", "details"],
-    "properties": {"code": {"type": "string"}, "message": {"type": "string"}, "details": {"type": "object"}},
+    "properties": {"code": {"type": "string"}, "message": {"type": "string"}, "details": {"type": "object"},
+                   "class": {"type": "string", "enum": ["FATAL", "RETRYABLE", "BLOCKED"],
+                             "description": "retry guidance: FATAL never retry unchanged; RETRYABLE bounded retry may succeed; BLOCKED environment / budget must change"}},
 }
 
 RESULT_SCHEMA: Dict[str, Any] = {
@@ -114,6 +116,7 @@ RESULT_SCHEMA: Dict[str, Any] = {
         "plan": {"type": "object", "description": "dry-run only: analyzer, capabilities and operations that would run"},
         "error": ERROR_SCHEMA,
         "error_kind": {"type": "string"},
+        "error_class": {"type": "string", "enum": ["FATAL", "RETRYABLE", "BLOCKED"]},
         "cache": {"type": "object", "additionalProperties": False, "required": ["status", "policy", "key"],
                   "properties": {"status": {"type": "string", "enum": list(CACHE_STATUSES)}, "policy": {"type": "string", "enum": list(CACHE_POLICIES)},
                                  "key": {"type": ["string", "null"], "pattern": r"^[0-9a-f]{64}$"}}},
@@ -144,6 +147,7 @@ RESPONSE_SCHEMA: Dict[str, Any] = {
         "warnings": {"type": "array", "items": {"type": "string"}},
         "error": ERROR_SCHEMA,
         "error_kind": {"type": "string"},
+        "error_class": {"type": "string", "enum": ["FATAL", "RETRYABLE", "BLOCKED"]},
     },
 }
 
