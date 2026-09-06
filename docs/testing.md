@@ -2,7 +2,7 @@
 
 ```text
 pip install -e . pytest
-python -m pytest -q               # 104 tests: unit + contract + integration + evals
+python -m pytest -q               # 107 tests: unit + contract + integration + evals
 python evals/run.py               # 9 measurement eval cases with expected values and tolerances
 python evals/contract_evals.py    # 17 contract eval cases
 ```
@@ -51,6 +51,9 @@ SkillPackage / ToolSpec / Observation / capability-name rules) · request schema
 · executable path not configurable · OS registry rules from `tests/contract/os_registry_contract.json` (provides
 shape, one id per kind, documented collision published, denylist superset, recursive rejection) · error classes in
 results and contract · doctor per-Capability AVAILABLE / MISSING · `check_contract` accepts the live contract ·
+self-conformance (`conformance.py`, SKILL_SPEC.md section 8): all 8 checks PASS or honestly NOT_IMPLEMENTED, and
+each fallible check is proven to actually detect a broken implementation (a validator that stops rejecting, a leaky
+PathPolicy stub, a real `shell=True` planted in a scanned file) · CLI smoke ·
 **21 drift fixtures**
 (`tests/contract/cases`: valid, unsupported schema, missing / extra tool, tool / capability / kind / kind_to_tool /
 version / schema-version / schema / invocation / provenance / exit-code mismatch, provides missing / renamed /

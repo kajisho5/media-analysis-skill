@@ -352,3 +352,68 @@ def test_doctor_reports_per_capability(tmp_path):
         assert (c["status"] == "AVAILABLE") == (not c["missing"])
     if doc["status"] == "ok":
         assert all(c["status"] == "AVAILABLE" for c in caps.values())
+
+
+# ---- self-conformance against AI-video-production-OS SKILL_SPEC.md section 8 (tests/conformance.py)
+def test_conformance_all_pass_or_honestly_not_implemented():
+    from media_analysis.conformance import CHECKS, run_conformance
+    doc = run_conformance()
+    assert doc["schema"] == "media-analysis/conformance@1" and doc["status"] == "ok"
+    assert {c["check"] for c in doc["checks"]} == set(CHECKS)
+    statuses = {c["check"]: c["status"] for c in doc["checks"]}
+    assert statuses["no_clobber_input"] == "NOT_IMPLEMENTED" and statuses["dependency_version_ranges"] == "NOT_IMPLEMENTED"
+    for c in doc["checks"]:
+        assert c["status"] in ("PASS", "NOT_IMPLEMENTED") and c["detail"]   # no silent FAIL, no empty detail
+
+
+def test_conformance_checks_actually_detect_failure():
+    """Each check that can fail must actually fail on a broken input, not just pass unconditionally."""
+    import media_analysis.conformance as conf
+
+    class BadRequest(dict):
+        pass
+
+    # forbidden_keys_rejected: prove the detector notices a broken implementation that silently accepts the request
+    from media_analysis.contract import AnalysisRequest
+    orig_from_dict = AnalysisRequest.from_dict
+    AnalysisRequest.from_dict = classmethod(lambda cls, d: object())  # simulates a validator that stopped rejecting anything
+    try:
+        r = conf.check_forbidden_keys_rejected()
+        assert r.status == "FAIL"
+    finally:
+        AnalysisRequest.from_dict = orig_from_dict
+
+    # workspace_confinement: a PathPolicy stub that accepts everything must be caught
+    import media_analysis.security as security_mod
+
+    class LeakyPolicy:
+        def __init__(self, workspace=None):
+            pass
+
+        def resolve_write_dir(self, path):
+            return Path(path)
+
+    real_policy = security_mod.PathPolicy
+    conf.PathPolicy = LeakyPolicy
+    try:
+        r = conf.check_workspace_confinement()
+        assert r.status == "FAIL"
+    finally:
+        conf.PathPolicy = real_policy
+
+    # no_unsafe_shell_out: an actual shell=True in a scanned file must be caught
+    tmp_file = Path(conf.__file__).resolve().parent / "_conformance_scan_probe.py"
+    tmp_file.write_text("import subprocess\nsubprocess.run('ls', shell=True)\n")
+    try:
+        r = conf.check_no_unsafe_shell_out()
+        assert r.status == "FAIL" and "_conformance_scan_probe.py" in r.detail
+    finally:
+        tmp_file.unlink()
+
+
+def test_conformance_cli_smoke(tmp_path):
+    r = subprocess.run([sys.executable, "-m", "media_analysis.cli", "conformance", "--json"], cwd=str(tmp_path), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    doc = json.loads(r.stdout)
+    assert r.returncode == 0 and doc["status"] == "ok" and r.stderr == ""
+    r = subprocess.run([sys.executable, "-m", "media_analysis.cli", "conformance"], cwd=str(tmp_path), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    assert r.returncode == 0 and r.stdout.startswith("conformance (")

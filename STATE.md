@@ -7,10 +7,17 @@ Last updated: 2026-09-05 (autonomous maintenance session). Version 0.1.0, contra
   verification, path policy, response envelope, exit codes, error classes (FATAL / RETRYABLE / BLOCKED).
 - Contract: `contract --json` (tools / kinds / provides / schemas / errors / security), `contract --check` drift
   detection with 21 mutation fixtures, `doctor --json` with per-Capability AVAILABLE / MISSING.
+- Self-conformance: `conformance --json` runs all 8 AI-video-production-OS `SKILL_SPEC.md` section 8 checks against
+  this installation (real requests + real source scan), each proven to actually detect a broken implementation.
+  Manually cross-verified (not a committed test / dependency) against the OS's own real `registry/` code on its
+  `main` branch (now merged there): `registry.CapabilityRegistry.register_contract(skill_contract())` succeeds,
+  `providers_of("measure.audio.loudness")` resolves this Skill, and the OS's own
+  `conformance.check_publishes_contract` / `check_lifecycle_declared` pass against our real contract document —
+  not just our own reimplementation of those rules in `tests/contract/os_registry_contract.json`.
 - OS integration (additive): `provides` publishes 10 Capability ids matching AI-video-production-OS
   `CAPABILITY_MATRIX.md`; denylist is a superset of `SKILL_SPEC.md` 3.1 and recursive; OS registry rules recorded
   in `tests/contract/os_registry_contract.json`; agent rules in `tests/contract/agent_skill_package_contract.json`.
-- Tests: 104 (pytest), measurement evals 9/9, contract evals 17/17; CI on Linux 3.9 / 3.11, Windows, macOS with real FFmpeg.
+- Tests: 107 (pytest), measurement evals 9/9, contract evals 17/17; CI on Linux 3.9 / 3.11, Windows, macOS with real FFmpeg.
 - Distribution: `pip install -e .` from a clone. **Not on PyPI, no git tags / GitHub releases yet.**
 
 ## KNOWN LIMITATIONS
@@ -21,8 +28,8 @@ Last updated: 2026-09-05 (autonomous maintenance session). Version 0.1.0, contra
 
 ## NOT DONE / PLANNED (in value order)
 1. First release: git tag `v0.1.0` + GitHub release notes (needs human go-ahead for the public release step).
-2. OS conformance harness hooks: expose a machine-readable self-test (`doctor` already covers #1, #6, #7 of
-   SKILL_SPEC 8; #2-#5 are covered by our own tests but not by an OS-runnable probe).
+2. ~~OS conformance harness hooks~~ DONE: `media-analysis conformance --json` covers all 8 SKILL_SPEC.md section 8
+   checks (2 honestly NOT_IMPLEMENTED where the check does not apply to a measurement-only Skill).
 3. video-production-agent adapter (lives in that repository; recipe in docs/architecture.md). Blocked on the agent's
    PR stack (#4-#10) settling.
 4. Optional MCP transport over the same request / response schemas (ADR-010: not before a consumer exists).

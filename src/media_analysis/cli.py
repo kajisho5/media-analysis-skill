@@ -126,6 +126,9 @@ def build_parser() -> argparse.ArgumentParser:
     c = sub.add_parser("contract", help="print the Skill / Tool contract, or check a saved contract against this installation")
     c.add_argument("--check", metavar="FILE", help="validate a contract document (file, or - for stdin) against the implementation; exit 0 only when identical")
     _add_common(c)
+
+    k = sub.add_parser("conformance", help="run AI-video-production-OS SKILL_SPEC.md section 8 self-checks against this installation")
+    _add_common(k)
     return ap
 
 
@@ -287,6 +290,18 @@ def _print_doctor(doc: Dict[str, Any]) -> None:
         print(f"problem: {p}")
 
 
+def _conformance(as_json: bool) -> int:
+    from .conformance import run_conformance
+    doc = run_conformance()
+    if as_json:
+        emit_json(doc)
+    else:
+        print(f"conformance ({doc['spec']}): {doc['status']}")
+        for c in doc["checks"]:
+            print(f"  {c['check']}: {c['status']}  {c['detail']}")
+    return 0 if doc["status"] == "ok" else 1
+
+
 def _contract(as_json: bool, check: Optional[str] = None) -> int:
     if check is not None:
         try:
@@ -329,6 +344,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0 if doc["status"] != "fail" else 1
     if args.cmd == "contract":
         return _contract(as_json, args.check)
+    if args.cmd == "conformance":
+        return _conformance(as_json)
     try:
         engine = _engine(args)
         document = _document(args)

@@ -17,6 +17,7 @@ media-analysis analyze <input> --kind <kind> [--kind <kind> ...] [--param key=va
 media-analysis run <request.json | -> [--json] [--dry-run] [engine options]      # canonical machine interface
 media-analysis doctor [--json] [--cache-dir DIR] [--workspace DIR]
 media-analysis contract [--json] [--check FILE|-]
+media-analysis conformance [--json]      # AI-video-production-OS SKILL_SPEC.md section 8 self-checks
 ```
 
 Engine options: `--timeout S`, `--max-analysis-calls N`, `--max-total-seconds S`, `--cache-dir DIR`,
@@ -97,6 +98,9 @@ A failed result has `"status": "error"`, `"error": {"code", "message", "details"
 6. Budgets are analyzer wall-clock limits (`max_total_seconds` is seconds of analyzer execution, not media duration).
 7. Save `contract --json` once and re-validate it with `contract --check` after upgrades; `status: drift` means
    your cached tool table is stale.
+8. `conformance --json` proves (by submitting real requests and scanning real source, not by asserting it) that
+   forbidden keys are rejected, no unsafe shell-out exists, writes stay confined to the workspace, and every
+   published Capability has a valid lifecycle and an AVAILABLE/MISSING doctor status.
 
 ## Boundaries
 

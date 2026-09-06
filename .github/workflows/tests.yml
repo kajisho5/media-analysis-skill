@@ -43,3 +43,4 @@ jobs:
         shell: bash
       - run: python -c "import json; json.load(open('contract.json'))"
       - run: media-analysis contract --check contract.json --json
+      - run: media-analysis conformance --json

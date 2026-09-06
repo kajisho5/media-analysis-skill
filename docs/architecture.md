@@ -108,6 +108,19 @@ behind each, so a registry can decide eligibility without knowing what is instal
 `check_contract` verifies that every kind has exactly one entry, that ids and tool ids match the implementation and
 that lifecycles are in the OS 5-state model.
 
+## Self-conformance (`conformance.py`)
+
+`contract_check.py` asks "does a saved contract document still describe this installation" (drift). A separate,
+complementary question — "does this installation actually behave the way its contract claims" — is answered by
+`media-analysis conformance --json`: it submits real requests to the engine and inspects real source, checking
+against AI-video-production-OS `docs/SKILL_SPEC.md` section 8 (`publishes_contract`, `forbidden_keys_rejected`,
+`no_unsafe_shell_out`, `workspace_confinement`, `no_clobber_input`, `lifecycle_declared`, `doctor_status`,
+`dependency_version_ranges`). Each check is `PASS`, `FAIL`, or `NOT_IMPLEMENTED` (never a faked pass): two checks are
+honestly `NOT_IMPLEMENTED` because they do not apply to a measurement-only Skill (`no_clobber_input` — there is no
+output-path parameter to clobber with) or to one with no declared dependencies (`dependency_version_ranges`).
+`test_conformance_checks_actually_detect_failure` proves each fallible check would report `FAIL` against a broken
+implementation, not just that it passes against the real one.
+
 ## Contract self-validation
 
 `contract_check.check_contract(doc)` compares a contract document with the implementation: skill id, version,
