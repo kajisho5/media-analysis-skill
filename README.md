@@ -50,6 +50,7 @@ cat request.json | media-analysis run - --json  # same, over stdin
 media-analysis doctor --json                    # environment vs. contract: python, ffmpeg, ffprobe, filters, registry, cache, path policy
 media-analysis contract --json                  # machine-readable Skill / Tool contract with request / response / observation schemas
 media-analysis contract --check saved.json      # does a saved contract still describe this installation? (drift detection, exit 1 on drift)
+media-analysis conformance --json               # AI-video-production-OS SKILL_SPEC.md section 8 self-checks (forbidden keys, shell-out, workspace confinement, ...)
 ```
 
 Everything runs locally; nothing is uploaded. Ten analysis kinds, one response schema, exit codes an adapter can

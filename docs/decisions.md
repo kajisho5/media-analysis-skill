@@ -172,3 +172,16 @@
 - `doctor --json` → `capabilities[]` maps each published Capability id to AVAILABLE / MISSING through the tool that
   implements it. This is derived from `provides` and the analyzer availability rows, never a separate table, so it
   cannot disagree with the contract.
+
+## ADR-027 A self-conformance command, separate from contract drift checking
+- Context: AI-video-production-OS `SKILL_SPEC.md` section 8 defines 8 conformance checks; 3 (`publishes_contract`,
+  `lifecycle_declared`, `dependency_version_ranges`) are answerable from a contract document alone and the OS's own
+  `registry/conformance.py` already implements those; the other 5 need "a callable submitting a request... and
+  returning the Skill's response" — per-Skill wiring the OS repository documents as future work, not built there yet.
+- Decision: `media-analysis conformance --json` implements all 8 checks against this installation directly, since
+  this Skill already owns the request path being tested. Two checks are honestly `NOT_IMPLEMENTED` rather than
+  forced to a vacuous PASS: `no_clobber_input` (no tool ever produces output — `produces_output` is false everywhere
+  — so there is no output-path parameter that could equal an input) and `dependency_version_ranges` (no
+  `dependencies` field is published). This is separate from `contract_check.py`: that module asks whether a *saved*
+  contract document still matches the implementation (drift); this one asks whether the implementation actually
+  behaves as claimed, by submitting real requests and scanning real source. Neither replaces the other.
