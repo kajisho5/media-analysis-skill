@@ -1,6 +1,6 @@
 # Repository state
 
-Last updated: 2026-09-05 (autonomous maintenance session). Version 0.1.0, contract `media-analysis/contract@1`.
+Last updated: 2026-09-08 (autonomous maintenance session). Version 0.1.0, contract `media-analysis/contract@1`.
 
 ## CURRENT (implemented, tested, on main)
 - 10 analysis kinds / 9 tools, deterministic identity, cache (use / bypass / only), budget, process-group timeout,
@@ -17,6 +17,11 @@ Last updated: 2026-09-05 (autonomous maintenance session). Version 0.1.0, contra
 - OS integration (additive): `provides` publishes 10 Capability ids matching AI-video-production-OS
   `CAPABILITY_MATRIX.md`; denylist is a superset of `SKILL_SPEC.md` 3.1 and recursive; OS registry rules recorded
   in `tests/contract/os_registry_contract.json`; agent rules in `tests/contract/agent_skill_package_contract.json`.
+- video-production-agent adapter: `MediaAnalysisAdapter` (`src/video_agent/tools/media_analysis/adapter.py` in that
+  repository, 298 lines — contract validation, request building, response checking, subprocess execution) is
+  version-aligned (`SUPPORTED_SKILL_VERSIONS = ("0.1.",)` matches this Skill's real `0.1.0`) and is registered /
+  consumed at agent startup (`video_agent/service.py`: `MEDIA_ANALYSIS_PACKAGE` import and
+  `registry.register_package(MEDIA_ANALYSIS_PACKAGE)`).
 - Tests: 107 (pytest), measurement evals 9/9, contract evals 17/17; CI on Linux 3.9 / 3.11, Windows, macOS with real FFmpeg.
 - Distribution: `pip install -e .` from a clone. **Not on PyPI, no git tags / GitHub releases yet.**
 
@@ -30,8 +35,8 @@ Last updated: 2026-09-05 (autonomous maintenance session). Version 0.1.0, contra
 1. First release: git tag `v0.1.0` + GitHub release notes (needs human go-ahead for the public release step).
 2. ~~OS conformance harness hooks~~ DONE: `media-analysis conformance --json` covers all 8 SKILL_SPEC.md section 8
    checks (2 honestly NOT_IMPLEMENTED where the check does not apply to a measurement-only Skill).
-3. video-production-agent adapter (lives in that repository; recipe in docs/architecture.md). Blocked on the agent's
-   PR stack (#4-#10) settling.
+3. ~~video-production-agent adapter~~ DONE: implemented in that repository (recipe in docs/architecture.md),
+   version-aligned, registered / consumed at agent startup — see CURRENT above.
 4. Optional MCP transport over the same request / response schemas (ADR-010: not before a consumer exists).
 
 ## NOT IN SCOPE (by design)
