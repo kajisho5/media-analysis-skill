@@ -1,0 +1,77 @@
+name: release
+
+# Single job, triggered on every push to main. Deliberately not a tag-triggered second workflow: a tag pushed
+# by this job's own GITHUB_TOKEN would not start another workflow run (GitHub's anti-recursion rule for the
+# default token), so a `push: tags:` workflow downstream of this one would simply never fire.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: read  # release-drafter needs this to list merged PRs and their labels for version resolution
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      # Dry run: only resolves the next version from the labels of PRs merged since the last release
+      # (release-drafter.yml's version-resolver; unlabeled PRs default to patch). Creates no draft, no release.
+      - name: Resolve next version (release-drafter, dry run)
+        id: drafter
+        uses: release-drafter/release-drafter@v6
+        with:
+          config-name: release-drafter.yml
+          disable-releaser: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Every value this script needs from the event/secrets is passed as an *environment variable*, never
+      # spliced into the run: script text with ${{ }} -- the classic Actions script-injection pattern. The
+      # script itself reads git history via `git log` (subprocess, not shell string interpolation) to build
+      # CHANGELOG.md, so an adversarial commit subject or PR title can change the text written to the file, but
+      # cannot escape into a shell command.
+      - name: Determine version, update pyproject.toml, generate CHANGELOG.md, tag
+        id: release
+        env:
+          RESOLVED_VERSION: ${{ steps.drafter.outputs.resolved_version }}
+          HAS_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN != '' }}
+        run: python .github/scripts/release.py
+
+      - name: Push release commit and tag
+        if: steps.release.outputs.released == 'true'
+        run: git push origin HEAD:main "${{ steps.release.outputs.new_tag }}"
+
+      - name: Create GitHub Release
+        if: steps.release.outputs.released == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.release.outputs.new_tag }}" \
+            --title "${{ steps.release.outputs.new_tag }}" \
+            --notes-file "${{ steps.release.outputs.notes_file }}"
+
+      # Skipped (not failed) when no PYPI_API_TOKEN secret is configured: HAS_PYPI_TOKEN above is exactly that
+      # check, and release.py only sets should_publish=true when it saw HAS_PYPI_TOKEN=true.
+      - name: Build and publish to PyPI
+        if: steps.release.outputs.released == 'true' && steps.release.outputs.should_publish == 'true'
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+          twine upload dist/*
