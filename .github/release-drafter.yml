@@ -1,0 +1,54 @@
+name-template: "v$RESOLVED_VERSION"
+tag-template: "v$RESOLVED_VERSION"
+
+categories:
+  - title: "Breaking changes"
+    labels: ["major", "breaking"]
+  - title: "Features"
+    labels: ["minor", "feature", "enhancement"]
+  - title: "Fixes"
+    labels: ["fix", "bug"]
+  - title: "Chores"
+    labels: ["chore", "docs", "ci", "dependencies"]
+
+# Used only for autolabeling PRs (.github/workflows/pr-labeler.yml) and for resolving the next version
+# (.github/workflows/release.yml, dry-run). The changelog body itself is generated separately from `git log`
+# (.github/scripts/release.py) and does not use this config's `template`.
+autolabeler:
+  - label: "major"
+    title:
+      - "/^(breaking|major)(\\(.+\\))?!?:/i"
+  - label: "feature"
+    title:
+      - "/^feat(\\(.+\\))?:/i"
+  - label: "fix"
+    title:
+      - "/^fix(\\(.+\\))?:/i"
+  - label: "docs"
+    title:
+      - "/^docs(\\(.+\\))?:/i"
+    files:
+      - "**/*.md"
+  - label: "ci"
+    title:
+      - "/^ci(\\(.+\\))?:/i"
+    files:
+      - ".github/**"
+  - label: "chore"
+    title:
+      - "/^chore(\\(.+\\))?:/i"
+  - label: "dependencies"
+    files:
+      - "pyproject.toml"
+
+version-resolver:
+  major:
+    labels: ["major", "breaking"]
+  minor:
+    labels: ["minor", "feature", "enhancement"]
+  patch:
+    labels: ["fix", "bug", "chore", "docs", "ci", "dependencies"]
+  default: patch
+
+template: |
+  Not used: .github/scripts/release.py generates CHANGELOG.md directly from `git log`, not from this template.
