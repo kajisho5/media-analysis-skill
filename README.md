@@ -1,19 +1,33 @@
 <p align="center">
-  <img src="assets/hero.jpg" alt="Media Analysis Skill — Understand your media" width="100%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/app-icon-dark.png">
+    <img src="brand/app-icon.png" width="128" alt="media-analysis-skill app icon">
+  </picture>
 </p>
 
-# media-analysis-skill
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/logo/media-analysis-skill-wordmark-white.svg">
+    <img src="brand/logo/media-analysis-skill-wordmark-black.svg" height="48" alt="media-analysis-skill">
+  </picture>
+</p>
 
-**Measure your media before anyone decides anything about it.** Local `ffprobe` / `ffmpeg`, Python standard
-library, structured Observations out. No AI inside.
+<p align="center"><b>Measure your media before anyone decides anything about it.</b><br>
+Local <code>ffprobe</code> / <code>ffmpeg</code>, Python standard library, structured Observations out. No AI inside.</p>
 
-<p>
+<p align="center">
+  <a href="#quick-start"><b>Quick start</b></a> ·
+  <a href="#what-it-returns">What it returns</a> ·
+  <a href="#analysis-kinds">Analysis kinds</a> ·
+  <a href="#guarantees">Guarantees</a> ·
+  <a href="docs/">Docs</a>
+</p>
+
+<p align="center">
   <a href="https://github.com/kajisho5/media-analysis-skill/actions/workflows/tests.yml"><img alt="tests" src="https://github.com/kajisho5/media-analysis-skill/actions/workflows/tests.yml/badge.svg"></a>
   <img alt="python 3.9+" src="https://img.shields.io/badge/python-3.9%2B-blue">
   <img alt="dependencies: none" src="https://img.shields.io/badge/dependencies-none-success">
-  <img alt="platforms" src="https://img.shields.io/badge/platforms-linux%20%7C%20macos%20%7C%20windows-informational">
   <a href="LICENSE"><img alt="license MIT" src="https://img.shields.io/badge/license-MIT-lightgrey"></a>
-  <a href="https://github.com/sponsors/kajisho5"><img alt="sponsor" src="https://img.shields.io/badge/sponsor-%E2%9D%A4-ff69b4"></a>
 </p>
 
 `media-analysis-skill` is the **eyes and meters** of a video-production toolchain. It measures facts about a media
