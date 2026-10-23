@@ -1,0 +1,23 @@
+name: pr-labeler
+
+# pull_request_target (not pull_request): runs with the base repo's permissions even for a PR from a fork, which
+# is required to add labels to a fork PR. Safe here because release-drafter only reads PR metadata (title, changed
+# file paths) through the GitHub API -- it does not check out or execute the PR's code.
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: release-drafter/release-drafter@v6
+        with:
+          config-name: release-drafter.yml
+          disable-releaser: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
