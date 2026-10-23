@@ -28,7 +28,7 @@ jobs:
       # (release-drafter.yml's version-resolver; unlabeled PRs default to patch). Creates no draft, no release.
       - name: Resolve next version (release-drafter, dry run)
         id: drafter
-        uses: release-drafter/release-drafter@v6
+        uses: release-drafter/release-drafter@v7
         with:
           config-name: release-drafter.yml
           disable-releaser: true
