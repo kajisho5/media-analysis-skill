@@ -23,7 +23,7 @@ All 9 tools wired in the agent. Calls ffmpeg/ffprobe directly (overlap with ffmp
 
 - [ ] **1. Single-source the version** — coordinated with the agent's version gate
   - Done when: contract version == tag
-- [ ] **2. Refresh STATE.md**
+- [x] **2. Refresh STATE.md** — [#18](https://github.com/kajisho5/media-analysis-skill/pull/18)
 - [ ] **3. Measurements new skills need for acceptance** — noise floor / SNR (voice-enhance), A/V offset -- only if not qc-skill's
   - Done when: evals
 
