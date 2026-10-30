@@ -11,6 +11,8 @@
 - Every analyzer's `version` equals the package version. A change in how any value is measured bumps the package
   minor version, which changes every analysis identity and invalidates the cache. Simpler than per-tool versions and
   matches how the agent tracks `tool_versions` per package.
+- Amended by ADR-028: the tool `version` is still the package version, but it no longer enters the analysis identity
+  or the cache key; a per-analyzer `algorithm_version` does.
 
 ## ADR-003 Static registry, no plugins, no stubs
 - Analyzers are a literal list. The registry refuses to start if it disagrees with the contract (`KIND_TO_TOOL`,
@@ -194,3 +196,37 @@
   `dependencies` field is published). This is separate from `contract_check.py`: that module asks whether a *saved*
   contract document still matches the implementation (drift); this one asks whether the implementation actually
   behaves as claimed, by submitting real requests and scanning real source. Neither replaces the other.
+
+## ADR-028 The cache is keyed by a per-analyzer algorithm version, not the package version
+- Context: ADR-002 made every analyzer's `version` the package version and put it in the analysis identity, on the
+  premise that the version moves when a measurement changes (README "Versioning": a measurement change bumps the
+  minor version, "which invalidates cached Observations by design"). Since PR #17 the version is single-sourced from
+  `pyproject.toml`, and the release workflow bumps it (patch, by default) on every merge to `main`. So every release
+  — v0.1.4 was a docs-only one — changed every identity and every observation id and emptied every cache, which is
+  what neither ADR-002 nor the README intended: both tie invalidation to a change in what is measured.
+- Options: (a) key on the package `major.minor` only, as the README's wording implies; (b) a version per analyzer,
+  bumped by hand when that analyzer's output changes. (a) still empties all ten analyzers' caches when one of them
+  changes, and relies on every measurement change also being labelled as a minor release; (b) invalidates exactly
+  what changed and is checked where the change is made (the analyzer's own class).
+- Decision: (b). Each concrete analyzer declares `algorithm_version` (a decimal integer string, `"1"` for all ten
+  at introduction; a test fails if an analyzer inherits it instead of declaring it). The analysis identity and the
+  cache key are `sha256(canonical_json({asset_fingerprint, analyzer, algorithm_version, kind, parameters}))`; the
+  cache entry format is `media-analysis-cache/2` with `metadata.algorithm_version` (and `metadata.package_version`
+  kept as a record). Provenance is unchanged: `tools[].version`, `source = media-analysis/<tool>@<package version>`
+  and `analysis.analyzer_version` still carry the package version (ADR-001, ADR-002). A cache hit returns the
+  Observation as it was measured, so its `source` names the package version that measured it, which can be older
+  than the installed package — that is the honest provenance of the value. New Observations add
+  `analysis.algorithm_version` so the identity can be recomputed from the Observation alone.
+- Rule for contributors: change how an analyzer measures (a default, a filter option, a parser, a rounding, a new or
+  renamed `data` key) → bump that analyzer's `algorithm_version` in the same PR (and the minor version as README
+  "Versioning" says, by labelling the PR). Anything else (docs, CI, other analyzers, refactors with identical output)
+  leaves it alone.
+- Contract impact (`contract@1`, `schema_versions` unchanged): added `tools[].algorithm_version` and the optional
+  Observation schema property `analysis.algorithm_version` (`contract --check` now compares
+  `tools[].algorithm_version`, fixture `algorithm_version_mismatch`); the descriptive lists `cache.key` and
+  `identity.analysis_identity` now name `algorithm_version` instead of `analyzer_version`. Those two lists describe
+  how this Skill computes its own keys; no request or response field changes shape, and video-production-agent's
+  adapter (`check_contract`, response checks) reads neither list, so it accepts the new contract unchanged. Cost:
+  one last invalidation — identities computed under ADR-002 are not looked up again, and observation ids change
+  once.
+

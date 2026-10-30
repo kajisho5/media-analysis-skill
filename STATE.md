@@ -8,12 +8,16 @@ against the code, a command run or the GitHub API on that date; anything that co
 - Single source: `pyproject.toml` `version`. `media_analysis.VERSION` (`src/media_analysis/__init__.py`, PR #17)
   reads this checkout's `pyproject.toml` when run from source, otherwise the installed `media_analysis_skill-*.dist-info`
   METADATA; there is no hard-coded constant. `media-analysis --version`, `contract --json` → `version`, every tool /
-  analyzer `version`, `doctor` / `conformance` → `skill.version` and Observation `source` all report it.
-- On `45d07ad` it is `0.1.3`, equal to the newest git tag `v0.1.3`.
+  analyzer `version`, `doctor` / `conformance` → `skill.version` and Observation `source` / `analysis.analyzer_version`
+  all report it.
+- The package version is provenance only. The analysis identity, observation id and cache key use each analyzer's
+  own `algorithm_version` (declared in its class, `"1"` for all ten; ADR-028), so a release that does not change an
+  analyzer keeps its cached Observations. Bump an analyzer's `algorithm_version` in the PR that changes its output.
+- On `2d304bf` (Release v0.1.4) it is `0.1.4`, equal to the newest git tag `v0.1.4` (`contract --json` → `version`).
 - The release workflow (`.github/workflows/release.yml` + `.github/scripts/release.py`) bumps `pyproject.toml`, writes
   `CHANGELOG.md`, tags and creates a GitHub release on **every push to `main`** (patch by default; minor / major from PR
   labels). So the number above goes stale with the next merge; read the live value with `media-analysis --version`.
-- Tags / GitHub releases: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v0.1.3`. Not on PyPI (`pypi.org/pypi/media-analysis-skill`
+- Tags / GitHub releases: `v0.1.0` … `v0.1.4`. Not on PyPI (`pypi.org/pypi/media-analysis-skill`
   returns 404; the publish step runs only when a `PYPI_API_TOKEN` secret exists). Install is `pip install -e .` from a clone.
 
 ## CURRENT (implemented, tested, on main)
@@ -42,7 +46,7 @@ against the code, a command run or the GitHub API on that date; anything that co
   filter api_key token env` (ADR-024).
 - Deterministic analysis identity, cache (use / bypass / only), budget, process-group timeout (POSIX `setsid` +
   `killpg`; Windows `CREATE_NEW_PROCESS_GROUP` + `taskkill /T /F`), verification, path policy.
-- `contract --check <file>` drift detection (21 mutation fixtures in `tests/contract/cases`, ADR-020).
+- `contract --check <file>` drift detection (22 mutation fixtures in `tests/contract/cases`, ADR-020).
 - `doctor --json` reports per Capability AVAILABLE / MISSING (ADR-025).
 - `conformance --json` runs the 8 AI-video-production-OS `SKILL_SPEC.md` section 8 checks (ADR-027): 6 PASS,
   2 NOT_IMPLEMENTED as not applicable (`no_clobber_input`: no tool writes output; `dependency_version_ranges`: no
@@ -67,8 +71,8 @@ against the code, a command run or the GitHub API on that date; anything that co
 - No other caller found in the sibling checkouts; whether anything outside them calls it is **unverified**.
 
 ## Tests and CI
-- `python -m pytest -q`: **107 passed** locally on 2026-10-30 (Python 3.11.17, FFmpeg 6.1.1, Linux) from 77 test
-  functions — collected per file: `test_contract.py` 42, `test_integration.py` 33, `test_unit.py` 30, `test_evals.py` 2.
+- `python -m pytest -q`: **111 passed** locally on 2026-10-30 (Python 3.11.17, FFmpeg 6.1.1, Linux) from 80 test
+  functions — collected per file: `test_contract.py` 43, `test_integration.py` 33, `test_unit.py` 33, `test_evals.py` 2.
 - `python evals/run.py` 9/9 measurement evals; `python evals/contract_evals.py` 17/17 contract evals;
   `python -m pyflakes src tests evals` clean.
 - `.github/workflows/tests.yml` (push to main, every PR), real FFmpeg on every job:
@@ -83,11 +87,6 @@ against the code, a command run or the GitHub API on that date; anything that co
 - `timing` (packet timestamps) parses one dict per packet into memory; no streaming for long files. The earlier
   "~100 MB for an hour of A/V" figure was not re-measured and is **unverified**.
 - Every Capability is `EXPERIMENTAL`; no STABLE promise yet.
-- Analyzer version == package version (`analyzers/base.py`), and the release workflow bumps the package version on
-  every merge. Cached Observations are therefore invalidated by every release, including docs-only ones, while
-  README "Versioning" says invalidation happens on minor bumps.
-- Stale `0.1.0` in docs: README "Versioning" and its sample response, SKILL.md sample response, `docs/tools.md` header,
-  `docs/observation.md` samples. The code reports the real version; only the prose is behind.
 - No MCP transport (ADR-010: not before a consumer needs one).
 
 ## NOT DONE / PLANNED
@@ -101,5 +100,5 @@ AI / inference / decisions, media editing, subtitles, transcription, semantic sc
 #1 Skill 0.1.0 + agent-ready contract · #2 sponsor link · #3 README landing page · #4 `provides` · #5 OS conformance
 hardening · #6 UTF-8 JSON protocol (ADR-026) · #8 STATE.md adapter note · #9 release / labeler / Dependabot / CodeQL ·
 #10 README header · #11 Python 3.9 on ubuntu-24.04 · #15 Actions bump + release-drafter v7 · #16 ECOSYSTEM_ROADMAP.md ·
-#17 version single-sourced from pyproject.toml. (#7 is an issue, not a PR; Dependabot PRs #12–#14 were closed
+#17 version single-sourced from pyproject.toml · #18 STATE.md refresh. (#7 is an issue, not a PR; Dependabot PRs #12–#14 were closed
 unmerged, superseded by #15.)

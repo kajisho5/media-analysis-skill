@@ -1,7 +1,10 @@
 """Analyzer contract.
 
     Analyzer.id                  tool name ("probe", "silence", ...); tool id is "media-analysis/<id>"
-    Analyzer.version             analyzer version (== package version; bump when a measurement changes)
+    Analyzer.version             tool version (== package version; provenance only, never part of the identity)
+    Analyzer.algorithm_version   measurement version: bump it when this analyzer's output for the same input and
+                                 parameters changes (ADR-028). It, not the package version, enters the analysis
+                                 identity and the cache key, so a release that does not touch an analyzer keeps its cache.
     Analyzer.supported_kinds     AnalysisKinds served
     Analyzer.required_capabilities
     Analyzer.plan(ctx, kind, parameters)     structured description of the operations it would run (dry-run)
@@ -48,6 +51,7 @@ class AnalysisContext:
 class Analyzer:
     id: str = "abstract"
     version: str = VERSION
+    algorithm_version: str = "0"     # every concrete analyzer declares its own (a test enforces it)
     supported_kinds: Tuple[str, ...] = ()
     required_capabilities: Tuple[str, ...] = ()
 
@@ -58,7 +62,7 @@ class Analyzer:
         raise NotImplementedError
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"id": self.id, "tool_id": f"media-analysis/{self.id}", "version": self.version,
+        return {"id": self.id, "tool_id": f"media-analysis/{self.id}", "version": self.version, "algorithm_version": self.algorithm_version,
                 "supported_kinds": list(self.supported_kinds), "required_capabilities": list(self.required_capabilities)}
 
 

@@ -58,7 +58,7 @@ def check_contract(doc: Any) -> List[str]:
             problems.append(f"tools: declared tool {extra} is not implemented")
         for tid in sorted(set(declared) & set(live_tools)):
             d, l = declared[tid], live_tools[tid]
-            for field in ("skill_id", "version", "kinds", "required_capabilities", "produces_output", "deterministic", "parameters", "supports", "provenance"):
+            for field in ("skill_id", "version", "algorithm_version", "kinds", "required_capabilities", "produces_output", "deterministic", "parameters", "supports", "provenance"):
                 if d.get(field) != l.get(field):
                     problems.append(f"tools[{tid}].{field}: expected {l.get(field)!r}, got {d.get(field)!r}")
             if d.get("required_capabilities") != TOOL_CAPABILITIES.get(tid.split("/", 1)[1]):

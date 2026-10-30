@@ -1,0 +1,15 @@
+{
+  "id": "algorithm_version_mismatch",
+  "description": "a contract saved before an analyzer's measurement changed (its cached Observations no longer apply)",
+  "mutations": [
+    {
+      "op": "set_tool_field",
+      "tool_id": "media-analysis/loudness",
+      "field": "algorithm_version",
+      "value": "0"
+    }
+  ],
+  "expect_problems": [
+    "tools[media-analysis/loudness].algorithm_version"
+  ]
+}

@@ -62,12 +62,12 @@ parameters always yields the same id. `cache_policy`: `use` (read + write, defau
 ## Response (structured output)
 
 ```json
-{"schema": "media-analysis/response@1", "skill": {"id": "media-analysis", "version": "0.1.0"}, "status": "ok", "dry_run": false,
+{"schema": "media-analysis/response@1", "skill": {"id": "media-analysis", "version": "<version>"}, "status": "ok", "dry_run": false,
  "results": [{"analysis_id": "analysis-001", "asset_id": "asset-001", "kind": "silence", "status": "ok",
               "observation": {"id": "obs_…", "asset_id": "asset-001", "kind": "silence",
                               "data": {"segments": [{"start": 0.0, "end": 2.0, "duration": 2.0, "type": "leading", "runs_to_end": false}], "...": "..."},
-                              "source": "media-analysis/silence@0.1.0", "analysis_id": "analysis-001", "observed_at": "2026-09-04T10:00:00Z",
-                              "analysis": {"identity": "…", "analyzer": "media-analysis/silence", "analyzer_version": "0.1.0",
+                              "source": "media-analysis/silence@<version>", "analysis_id": "analysis-001", "observed_at": "2026-09-04T10:00:00Z",
+                              "analysis": {"identity": "…", "analyzer": "media-analysis/silence", "analyzer_version": "<version>", "algorithm_version": "1",
                                            "parameters": {"stream": 0, "threshold_db": -45.0, "min_duration": 1.0, "edge_tolerance": 0.1}, "seconds": 0.3},
                               "asset": {"path": "/abs/sample.mp4", "fingerprint": "<sha256>", "size": 208685}},
               "cache": {"status": "miss", "policy": "use", "key": "…"},

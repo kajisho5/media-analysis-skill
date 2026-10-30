@@ -23,6 +23,7 @@ def _audio_summary(s: Dict[str, Any]) -> Dict[str, Any]:
 
 class ProbeAnalyzer(Analyzer):
     id = "probe"
+    algorithm_version = "1"
     supported_kinds = ("media_probe",)
     required_capabilities = ("ffprobe",)
 
@@ -46,6 +47,7 @@ class ProbeAnalyzer(Analyzer):
 
 class StreamAnalyzer(Analyzer):
     id = "streams"
+    algorithm_version = "1"
     supported_kinds = ("stream_layout",)
     required_capabilities = ("ffprobe",)
 
@@ -75,6 +77,7 @@ class StreamAnalyzer(Analyzer):
 
 class VideoAnalyzer(Analyzer):
     id = "video"
+    algorithm_version = "1"
     supported_kinds = ("video_format",)
     required_capabilities = ("ffprobe",)
 
@@ -107,6 +110,7 @@ class VideoAnalyzer(Analyzer):
 
 class AudioAnalyzer(Analyzer):
     id = "audio"
+    algorithm_version = "1"
     supported_kinds = ("audio_format",)
     required_capabilities = ("ffprobe",)
 

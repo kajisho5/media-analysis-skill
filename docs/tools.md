@@ -1,6 +1,8 @@
 # Tools and analysis kinds
 
-Skill id `media-analysis`, package `media-analysis-skill`, version `0.1.0`. Tool id = `media-analysis/<tool>`.
+Skill id `media-analysis`, package `media-analysis-skill`; version: the package version (`media-analysis --version`,
+`contract --json` → `version`; single-sourced from `pyproject.toml`). Tool id = `media-analysis/<tool>`; each tool also
+publishes `algorithm_version`, the measurement version that keys its cache (README "Versioning", ADR-028).
 Only implemented tools are declared (`media-analysis contract --json`); the registry refuses to start if the code
 and the contract disagree.
 

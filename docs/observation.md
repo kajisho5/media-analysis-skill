@@ -9,7 +9,7 @@ versions). The same documents are what a future MCP transport would carry (trans
 ```json
 {
   "schema": "media-analysis/response@1",
-  "skill": {"id": "media-analysis", "version": "0.1.0"},
+  "skill": {"id": "media-analysis", "version": "<package version>"},
   "status": "ok | partial | error",
   "dry_run": false,
   "results": [ "...one result per request, in request order..." ],
@@ -54,8 +54,8 @@ A failed result: `"status": "error"`, `"error": {"code", "message", "details", "
     "source":      "media-analysis/<tool>@<version>",
     "analysis_id": "<caller's analysis id | analysis-<identity[:16]>>",
     "observed_at": "YYYY-MM-DDTHH:MM:SSZ",
-    "analysis":    { "identity": "<sha256>", "analyzer": "media-analysis/<tool>", "analyzer_version": "0.1.0",
-                     "parameters": { "...effective parameters..." }, "seconds": 0.3 },
+    "analysis":    { "identity": "<sha256>", "analyzer": "media-analysis/<tool>", "analyzer_version": "<package version>",
+                     "algorithm_version": "<analyzer measurement version>", "parameters": { "...effective parameters..." }, "seconds": 0.3 },
     "asset":       { "path": "/abs/path", "fingerprint": "<sha256 of content>", "size": 12345 }
 }
 ```
@@ -71,7 +71,9 @@ A failed result: `"status": "error"`, `"error": {"code", "message", "details", "
 | `source` | `media-analysis/<tool>@<semver>`; provenance is always OBSERVED, never INFERRED / AI_GENERATED / USER / DECISION; matches video-production-agent `Observation.source = "<package>/<tool>@<version>"` (PR #7 boundary, ADR-001) and its validator (`"@" in source and not source.startswith("ai")`) |
 | `analysis_id` | request value or derived |
 | `observed_at` | UTC, second precision; on a cache hit the original measurement time is kept |
-| `analysis.parameters` | the effective parameters (defaults applied); same input + tool + version + parameters → same `identity` |
+| `analysis.analyzer_version` | the package version that measured this Observation (== the version in `source`); provenance only, not part of the identity |
+| `analysis.algorithm_version` | the analyzer's measurement version; part of the identity and the cache key (ADR-028) |
+| `analysis.parameters` | the effective parameters (defaults applied); same input + tool + algorithm version + parameters → same `identity` |
 | `asset.fingerprint` | sha256 of the file content; the path is informational |
 
 `output_policy.round` (default 3) rounds floats in the returned document; it does not affect the identity or the
@@ -84,14 +86,14 @@ parameters recorded next to it (`analysis.parameters`); the fields that look lik
 `cut_score` (scdet score of the frame), `probe_score` (ffprobe container detection score), `integrity.status`
 (decoder printed error lines or not). None of them is a probability that the agent should act, and the Skill never
 assigns one. Evidence an agent can verify later: `asset.fingerprint` (sha256 of the content), `asset.path`,
-`analysis.analyzer` + `analysis.analyzer_version` (== `source`), `analysis.parameters`, `analysis.identity`,
+`analysis.analyzer` + `analysis.analyzer_version` (== `source`) + `analysis.algorithm_version`, `analysis.parameters`, `analysis.identity`,
 `observed_at`, and in the result `cache.status` (a `hit` was measured at `observed_at`, not now) and
 `usage.operations` (which executables ran, for what).
 
 ## Determinism
 
-`id`, `analysis.identity`, `data` and `asset.fingerprint` depend only on the file content, the analyzer, its version,
-the kind and the effective parameters. `observed_at`, `analysis.seconds`, `usage.seconds` and `asset.path` are
+`id`, `analysis.identity`, `data` and `asset.fingerprint` depend only on the file content, the analyzer, its algorithm
+version, the kind and the effective parameters (not on the package version). `observed_at`, `analysis.seconds`, `usage.seconds` and `asset.path` are
 outside the identity (time, wall clock and location of the copy). Nothing derived from a process id, a temporary
 path or the current time enters `data` or the identity (tested across processes).
 

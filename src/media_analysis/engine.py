@@ -100,10 +100,10 @@ class AnalysisEngine:
         if prep["missing"]:
             raise AnalysisError("ANALYZER_UNAVAILABLE", f"{tool_id(analyzer.id)} needs capabilities that are missing", {"missing": prep["missing"]})
         fp = fingerprint_file(prep["path"])
-        identity = analysis_identity(fp["sha256"], analyzer.id, analyzer.version, req.kind, req.parameters)
+        identity = analysis_identity(fp["sha256"], analyzer.id, analyzer.algorithm_version, req.kind, req.parameters)
         analysis_id = req.analysis_id or ("analysis-" + identity[:16])
         asset = {"path": prep["path"], "fingerprint": fp["sha256"], "size": fp["size"]}
-        cache_kw = {"asset_fingerprint": fp["sha256"], "analyzer": tool_id(analyzer.id), "analyzer_version": analyzer.version, "kind": req.kind, "parameters": req.parameters}
+        cache_kw = {"asset_fingerprint": fp["sha256"], "analyzer": tool_id(analyzer.id), "algorithm_version": analyzer.algorithm_version, "kind": req.kind, "parameters": req.parameters}
         use_cache = self.cache is not None and req.cache_policy != "bypass"
         cache_status = "disabled" if self.cache is None else ("bypass" if req.cache_policy == "bypass" else "miss")
 
@@ -133,7 +133,8 @@ class AnalysisEngine:
             self.executions.append({"analyzer": tool_id(analyzer.id), "kind": req.kind, "seconds": seconds, "operations": list(ctx.operations)})
         if not isinstance(data, dict):
             raise AnalysisError("INVALID_RESULT", f"{tool_id(analyzer.id)} returned {type(data).__name__}, not an object")
-        obs = make_observation(identity=identity, asset_id=req.asset_id, kind=req.kind, tool=analyzer.id, analyzer_version=analyzer.version, data=data,
+        obs = make_observation(identity=identity, asset_id=req.asset_id, kind=req.kind, tool=analyzer.id, analyzer_version=analyzer.version,
+                               algorithm_version=analyzer.algorithm_version, data=data,
                                analysis_id=analysis_id, observed_at=self.clock(), parameters=req.parameters, asset=asset, seconds=seconds)
         duration = container_duration(ctx._probe) if ctx._probe else None
         verify_observation(obs, expected_asset_id=req.asset_id, expected_kind=req.kind, expected_analysis_id=analysis_id, duration=duration)

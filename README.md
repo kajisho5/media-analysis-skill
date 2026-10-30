@@ -74,7 +74,7 @@ branch on. Details below and in [docs/](docs/).
 
 | | |
 |---|---|
-| **Deterministic** | same file content + analyzer + version + parameters → same identity, same Observation id, same data |
+| **Deterministic** | same file content + analyzer + algorithm version + parameters → same identity, same Observation id, same data |
 | **Observations, not opinions** | `silence 0.0–3.0 s exists` is the whole statement; `trim it` is the agent's job. No confidence-of-action, no recommendations |
 | **Verifiable** | every Observation records the analyzer, its version, the effective parameters and the file's sha256; every response is checked against the published schemas before it leaves |
 | **Honest** | what could not be measured is `null` / `not_performed`, never PASS; a failed analyzer run still reports its cost |
@@ -113,7 +113,7 @@ on failure alike; stderr carries diagnostics only.
 ```json
 {
   "schema": "media-analysis/response@1",
-  "skill": {"id": "media-analysis", "version": "0.1.0"},
+  "skill": {"id": "media-analysis", "version": "<version>"},
   "status": "ok",
   "dry_run": false,
   "results": [{
@@ -125,10 +125,10 @@ on failure alike; stderr carries diagnostics only.
       "data": { "container": {"format": "mov,mp4,m4a,3gp,3g2,mj2", "duration": 6.0, "size": 208685, "bitrate": 278246, "start_time": 0.0},
                 "video": {"codec": "h264", "width": 320, "height": 180, "fps": 25.0, "pixel_format": "yuv420p"},
                 "audio": {"codec": "aac", "sample_rate": 48000, "channels": 1, "channel_layout": "mono", "sample_format": "fltp"} },
-      "source": "media-analysis/probe@0.1.0",
+      "source": "media-analysis/probe@<version>",
       "analysis_id": "analysis-001",
       "observed_at": "2026-09-04T10:00:00Z",
-      "analysis": {"identity": "<sha256>", "analyzer": "media-analysis/probe", "analyzer_version": "0.1.0", "parameters": {}, "seconds": 0.05},
+      "analysis": {"identity": "<sha256>", "analyzer": "media-analysis/probe", "analyzer_version": "<version>", "algorithm_version": "1", "parameters": {}, "seconds": 0.05},
       "asset": {"path": "/abs/sample.mp4", "fingerprint": "<sha256 of file>", "size": 208685}
     },
     "cache": {"status": "miss", "policy": "use", "key": "<sha256>"},
@@ -181,11 +181,12 @@ Step-by-step adapter recipe: [docs/architecture.md](docs/architecture.md#connect
 
 ## Guarantees
 
-- **Deterministic identity**: same file content + analyzer + analyzer version + kind + effective parameters → same
-  `analysis.identity`, same cache key, same observation id. Parameter order never matters (canonical JSON).
+- **Deterministic identity**: same file content + analyzer + algorithm version + kind + effective parameters → same
+  `analysis.identity`, same cache key, same observation id. Parameter order never matters (canonical JSON). The
+  package version is not part of it, so a release keeps the identities of every analyzer it did not change.
 - **Cache** (`--cache-dir`, inside the workspace; `cache_policy` `use` / `bypass` / `only`): a hit returns the
-  stored Observation without running any analyzer and counts no analyzer call; changing the file, the analyzer
-  version or the parameters is a miss; tampered or unreadable entries are reported as `invalid` and re-measured.
+  stored Observation without running any analyzer and counts no analyzer call; changing the file, the analyzer's
+  algorithm version or the parameters is a miss (a new package version alone is not); tampered or unreadable entries are reported as `invalid` and re-measured.
 - **Budget**: `max_analysis_calls`, `max_total_seconds`, `timeout` are enforced (CLI flags or a batch `budget`);
   unknown budget names are rejected; exceeding a limit yields `BUDGET_EXCEEDED` / `ANALYZER_TIMEOUT` and no Observation.
 - **Timeout**: the whole ffmpeg / ffprobe process group is killed; no partial observation and no cache entry is left.
@@ -220,17 +221,26 @@ caller's retry policy: `FATAL` (never retry unchanged), `RETRYABLE` (bounded ret
 
 ## Versioning
 
-- Package / Skill version: `0.1.0` (`media_analysis.VERSION`). Every tool and every analyzer carries the package
-  version; `source` is `media-analysis/<tool>@<version>`.
+- Package / Skill version: single-sourced from `pyproject.toml` (`media_analysis.VERSION`; read the live value with
+  `media-analysis --version` or `contract --json` → `version`). The release workflow bumps it on every merge to
+  `main`, so this README does not repeat the number. Every tool carries the package version (`tools[].version`);
+  `source` is `media-analysis/<tool>@<version>` and `analysis.analyzer_version` records the same package version:
+  the provenance of who measured the value.
+- Algorithm version (`tools[].algorithm_version`, Observation `analysis.algorithm_version`): a small integer per
+  analyzer, bumped only when that analyzer's output for the same file and parameters changes. It, not the package
+  version, enters the analysis identity and the cache key (`docs/decisions.md` ADR-028). A docs-only or unrelated
+  release therefore keeps every cached Observation; changing how one analyzer measures invalidates that analyzer's
+  entries only. A cache hit returns the Observation as measured, so its `source` names the package version that
+  measured it, which may be older than the installed one.
 - Tool schema (request fields, parameter names, `data` keys of a kind) is stable within a minor version. Adding a key
   is a patch; renaming / removing a key, changing a default or changing how a value is measured bumps the minor
-  version and therefore the analyzer version, which invalidates cached Observations by design.
+  version and, for the analyzers affected, their algorithm version.
 - Contract schemas (`contract --json` → `schema_versions`): `contract`, `request`, `response`, `observation` are
   versioned separately and bumped only when the corresponding document shape changes incompatibly. Within
   `media-analysis/contract@1` changes are additive only (new optional fields, new kinds); an adapter that saved the
   contract can verify it against the installed skill with `contract --check` (`status: ok | drift`). A future
   `contract@2` would be a different `schema` value and is refused by `--check` of a `@1` implementation. Stable
-  identifiers for the video-production-agent adapter: `skill_id`, `version`, `tools[].tool_id`, `tools[].version`,
+  identifiers for the video-production-agent adapter: `skill_id`, `version`, `tools[].tool_id`, `tools[].version`, `tools[].algorithm_version`,
   `tools[].required_capabilities`, `tools[].kinds`, `kind_to_tool`, `errors.exit_codes`.
 - `contract --json` → `provides`: all ten of this Skill's analysis kinds by their cross-repository Capability id
   (`silence` -> `measure.audio.silence`, `loudness` -> `measure.audio.loudness`, `integrity` -> `measure.audio.integrity`,

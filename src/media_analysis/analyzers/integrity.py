@@ -81,6 +81,7 @@ def decide_status(decode: Dict[str, Any], frames: Dict[str, Any], timestamps: Di
 
 class IntegrityAnalyzer(Analyzer):
     id = "integrity"
+    algorithm_version = "1"
     supported_kinds = ("integrity",)
     required_capabilities = ("ffprobe", "ffmpeg")
 

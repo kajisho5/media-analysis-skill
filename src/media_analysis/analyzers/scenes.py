@@ -54,6 +54,7 @@ def build_scenes(cuts: List[Dict[str, float]], duration: Optional[float], min_sc
 
 class SceneAnalyzer(Analyzer):
     id = "scenes"
+    algorithm_version = "1"
     supported_kinds = ("scene_detection",)
     required_capabilities = ("ffprobe", "ffmpeg", "filter:scdet")
 

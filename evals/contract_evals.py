@@ -288,7 +288,7 @@ def c16():
         return [expect(d1["status"] == d2["status"] == "ok", "both ok"), expect(same, "identical observations")]
 
 
-@case("C17_cache_invalidation", "content change, analyzer version change and parameter change each invalidate; corruption is 'invalid'")
+@case("C17_cache_invalidation", "content change and algorithm version change invalidate, a package version change does not (ADR-028); corruption is 'invalid'")
 def c17():
     from test_unit import CountingAnalyzer, FakeRegistry, fake_caps
     with tempfile.TemporaryDirectory() as tmp:
@@ -302,13 +302,16 @@ def c17():
         s2 = eng.analyze(req)["cache"]["status"]
         f.write_bytes(b"v2")
         s3 = eng.analyze(req)["cache"]["status"]
-        an.version = "0.1.1"
+        an.version = "9.9.9"                 # a release: package / tool version only
         s4 = eng.analyze(req)["cache"]["status"]
+        an.algorithm_version = "2"           # the measurement changed
+        s5 = eng.analyze(req)["cache"]["status"]
         key = eng.analyze(req)["cache"]["key"]
         entry = Path(tmp) / "cache" / key[:2] / f"{key}.json"
         entry.write_text("{corrupt")
-        s5 = eng.analyze(req)["cache"]["status"]
-        return [expect([s1, s2, s3, s4, s5] == ["miss", "hit", "miss", "miss", "invalid"], f"statuses {[s1, s2, s3, s4, s5]}"), expect(an.calls == 4, f"analyzer calls {an.calls}")]
+        s6 = eng.analyze(req)["cache"]["status"]
+        statuses = [s1, s2, s3, s4, s5, s6]
+        return [expect(statuses == ["miss", "hit", "miss", "hit", "miss", "invalid"], f"statuses {statuses}"), expect(an.calls == 4, f"analyzer calls {an.calls}")]
 
 
 def run_all() -> List[Dict[str, Any]]:

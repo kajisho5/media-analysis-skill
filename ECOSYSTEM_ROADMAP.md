@@ -5,7 +5,7 @@ Written from a read-only audit of this repository on 2026-10-30. Each step below
 
 ## Where it stands
 
-pyproject/tag 0.1.1 but VERSION 0.1.0. 10 measurement kinds. 77 test functions, CI on 3 OSes. STATE.md stale (says no tags).
+Version single-sourced from `pyproject.toml` (#17): `contract --json` → `version` equals the newest tag (0.1.4 at `v0.1.4`, checked 2026-10-30). Cache keyed by per-analyzer algorithm version, so releases no longer empty it (ADR-028). 10 measurement kinds. 80 test functions (111 collected), CI on 3 OSes. STATE.md current (#18).
 
 ## What this repository owns
 
@@ -21,7 +21,7 @@ All 9 tools wired in the agent. Calls ffmpeg/ffprobe directly (overlap with ffmp
 
 ## Steps
 
-- [ ] **1. Single-source the version** — coordinated with the agent's version gate
+- [x] **1. Single-source the version** — coordinated with the agent's version gate — [#17](https://github.com/kajisho5/media-analysis-skill/pull/17)
   - Done when: contract version == tag
 - [x] **2. Refresh STATE.md** — [#18](https://github.com/kajisho5/media-analysis-skill/pull/18)
 - [ ] **3. Measurements new skills need for acceptance** — noise floor / SNR (voice-enhance), A/V offset -- only if not qc-skill's
