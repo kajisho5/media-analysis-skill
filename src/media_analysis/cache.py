@@ -1,7 +1,9 @@
 """Observation cache (reuse only; not job / resume state).
 
-Key = sha256 of canonical {asset_fingerprint, analyzer, analyzer_version, kind, parameters} — the analysis identity.
-An entry is invalid (miss) when the asset fingerprint, analyzer version or parameters recorded inside it differ from
+Key = sha256 of canonical {asset_fingerprint, analyzer, algorithm_version, kind, parameters} — the analysis identity.
+The package version is recorded in each entry (metadata.package_version, and in the stored Observation's source) but is
+not part of the key: a release that leaves an analyzer's algorithm_version unchanged keeps its entries (ADR-028).
+An entry is invalid (miss) when the asset fingerprint, algorithm version or parameters recorded inside it differ from
 the request, when its result hash does not match its stored observation, or when the file cannot be parsed.
 Entries live as JSON files inside the workspace (PathPolicy)."""
 from __future__ import annotations
@@ -17,7 +19,7 @@ from .canonical import canonical_json, stable_hash
 from .errors import AnalysisError
 from .security import PathPolicy
 
-CACHE_FORMAT = "media-analysis-cache/1"
+CACHE_FORMAT = "media-analysis-cache/2"   # /2: metadata.algorithm_version replaces metadata.analyzer_version (ADR-028)
 
 
 class ObservationCache:
@@ -32,7 +34,7 @@ class ObservationCache:
             raise AnalysisError("CACHE_INVALID", "cache key must be a hex digest")
         return self.dir / key[:2] / f"{key}.json"
 
-    def get(self, key: str, *, asset_fingerprint: str, analyzer: str, analyzer_version: str, kind: str, parameters: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], str]:
+    def get(self, key: str, *, asset_fingerprint: str, analyzer: str, algorithm_version: str, kind: str, parameters: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], str]:
         """(observation, status) with status hit | miss | invalid. An invalid entry is removed and counts as a miss."""
         path = self._path(key)
         if not path.exists():
@@ -43,7 +45,7 @@ class ObservationCache:
             meta = entry["metadata"]
             obs = entry["observation"]
             ok = (entry.get("format") == CACHE_FORMAT and meta["key"] == key and meta["asset_fingerprint"] == asset_fingerprint
-                  and meta["analyzer"] == analyzer and meta["analyzer_version"] == analyzer_version and meta["kind"] == kind
+                  and meta["analyzer"] == analyzer and meta["algorithm_version"] == algorithm_version and meta["kind"] == kind
                   and canonical_json(meta["parameters"]) == canonical_json(parameters) and meta["result_hash"] == stable_hash(obs))
         except (ValueError, KeyError, TypeError, OSError):
             ok = False
@@ -58,9 +60,9 @@ class ObservationCache:
         self.hits += 1
         return obs, "hit"
 
-    def put(self, key: str, observation: Dict[str, Any], *, asset_fingerprint: str, analyzer: str, analyzer_version: str, kind: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
+    def put(self, key: str, observation: Dict[str, Any], *, asset_fingerprint: str, analyzer: str, algorithm_version: str, kind: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         path = self._path(key)
-        meta = {"key": key, "analyzer": analyzer, "analyzer_version": analyzer_version, "kind": kind, "parameters": parameters,
+        meta = {"key": key, "analyzer": analyzer, "algorithm_version": algorithm_version, "kind": kind, "parameters": parameters,
                 "asset_fingerprint": asset_fingerprint, "created_at": observation["observed_at"], "result_hash": stable_hash(observation),
                 "package_version": VERSION}
         entry = {"format": CACHE_FORMAT, "metadata": meta, "observation": observation}

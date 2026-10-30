@@ -38,7 +38,8 @@ CLI (cli.py)  ──▶  AnalysisEngine.run(document) (engine.py)   document = r
 ```python
 class Analyzer:
     id: str                      # tool name; tool id = "media-analysis/<id>"
-    version: str                 # == package version; bump when a measurement changes
+    version: str                 # == package version; provenance (source, analysis.analyzer_version)
+    algorithm_version: str       # measurement version, declared per analyzer; bump when its output changes (ADR-028)
     supported_kinds: tuple       # AnalysisKinds served by this tool
     required_capabilities: tuple # "ffprobe", "ffmpeg", "filter:<name>"
     def plan(ctx, kind, parameters) -> [{"executable", "purpose"}]   # dry-run, runs nothing
@@ -54,7 +55,11 @@ Analyzers: `ProbeAnalyzer` (media_probe), `StreamAnalyzer` (stream_layout), `Vid
 
 ## Determinism
 
-`analysis.identity = sha256(canonical_json({asset_fingerprint, analyzer, analyzer_version, kind, parameters}))`
+`analysis.identity = sha256(canonical_json({asset_fingerprint, analyzer, algorithm_version, kind, parameters}))`
+
+- `algorithm_version` is the analyzer's own measurement version, not the package version: the release workflow
+  bumps the package version on every merge, and a release that does not change an analyzer must not change its
+  identities (ADR-028). The package version is still recorded in every Observation (`source`, `analysis.analyzer_version`).
 
 - `asset_fingerprint` is the sha256 of the file content (not path, not mtime): a moved file keeps its identity, an
   edited file loses it.
@@ -69,14 +74,16 @@ happen to be computed from the same identity; the cache additionally verifies it
 
 ## Cache
 
-`ObservationCache` stores `{format, metadata{key, analyzer, analyzer_version, kind, parameters, asset_fingerprint,
+`ObservationCache` stores `{format, metadata{key, analyzer, algorithm_version, kind, parameters, asset_fingerprint,
 created_at, result_hash, package_version}, observation}` as one JSON file per key under `<workspace>/<cache-dir>/`.
-A hit returns the stored Observation (relabelled with the request's `asset_id` / `analysis_id`, re-verified), runs
-no analyzer and counts `usage.analyzer_calls = 0`. Result `cache.status`: `hit`, `miss` (no entry; measured and
+Entry format `media-analysis-cache/2` (`/1` entries were keyed by the package version; after ADR-028 they are
+never looked up again and the next request re-measures). The package version is recorded in the entry and in its
+Observation but is not part of the key. A hit returns the stored Observation (relabelled with the request's
+`asset_id` / `analysis_id`, re-verified, its `source` still naming the package version that measured it), runs no analyzer and counts `usage.analyzer_calls = 0`. Result `cache.status`: `hit`, `miss` (no entry; measured and
 stored), `invalid` (entry present but stale or tampered; removed, measured, stored), `bypass` (request
 `cache_policy: bypass`; neither read nor written), `disabled` (no cache configured). Request `cache_policy: only`
-never runs an analyzer: a hit or `CACHE_MISS`. Invalidation: asset changed, analyzer version changed, parameters
-changed, entry tampered or unreadable. It is a reuse cache only: no job state, no resume, no dependency between entries.
+never runs an analyzer: a hit or `CACHE_MISS`. Invalidation: asset changed, the analyzer's algorithm version
+changed, parameters changed, entry tampered or unreadable. It is a reuse cache only: no job state, no resume, no dependency between entries.
 
 ## Budget
 

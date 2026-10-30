@@ -84,7 +84,9 @@ OBSERVATION_SCHEMA: Dict[str, Any] = {
             "properties": {
                 "identity": {"type": "string", "pattern": r"^[0-9a-f]{64}$"},
                 "analyzer": {"type": "string", "pattern": r"^media-analysis/[a-z]+$"},
-                "analyzer_version": {"type": "string"},
+                "analyzer_version": {"type": "string", "description": "package version that measured this observation (provenance; == the version in source)"},
+                "algorithm_version": {"type": "string", "pattern": r"^[0-9]+$",
+                                      "description": "the analyzer's measurement version; enters the identity and the cache key instead of the package version"},
                 "parameters": {"type": "object", "description": "effective parameters (defaults applied)"},
                 "seconds": {"type": "number", "minimum": 0},
             },

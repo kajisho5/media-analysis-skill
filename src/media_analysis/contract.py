@@ -145,7 +145,8 @@ def tool_spec(analyzer: Any) -> Dict[str, Any]:
     required_capabilities, inputs, produces_output, deterministic, result_keys)."""
     kinds = list(analyzer.supported_kinds)
     return {
-        "tool_id": tool_id(analyzer.id), "skill_id": SKILL_ID, "version": analyzer.version, "description": TOOL_DESCRIPTIONS[analyzer.id],
+        "tool_id": tool_id(analyzer.id), "skill_id": SKILL_ID, "version": analyzer.version, "algorithm_version": analyzer.algorithm_version,
+        "description": TOOL_DESCRIPTIONS[analyzer.id],
         "required_capabilities": list(analyzer.required_capabilities),
         "inputs": ["input"], "input_type": "media file path (one file per request)",
         "produces_output": False, "deterministic": True, "writes_media": False,
@@ -193,11 +194,11 @@ def skill_contract() -> Dict[str, Any]:
         "schemas": {"request": request_schema(kinds, PARAMETER_SCHEMAS), "batch": BATCH_SCHEMA, "result": RESULT_SCHEMA,
                     "response": RESPONSE_SCHEMA, "observation": OBSERVATION_SCHEMA},
         "cache": {"policies": list(CACHE_POLICIES), "statuses": list(CACHE_STATUSES),
-                  "key": ["asset_fingerprint(sha256 of content)", "analyzer", "analyzer_version", "kind", "effective_parameters(canonical JSON)"],
+                  "key": ["asset_fingerprint(sha256 of content)", "analyzer", "algorithm_version", "kind", "effective_parameters(canonical JSON)"],
                   "hit_runs_analyzer": False},
         "budget": {"supported": ["max_analysis_calls", "timeout", "max_total_seconds"], "unknown_fields": "INVALID_INPUT",
                    "exceeded": "BUDGET_EXCEEDED, no observation, no analyzer process"},
-        "identity": {"analysis_identity": ["asset_fingerprint", "analyzer", "analyzer_version", "kind", "effective_parameters"], "canonical_json": True,
+        "identity": {"analysis_identity": ["asset_fingerprint", "analyzer", "algorithm_version", "kind", "effective_parameters"], "canonical_json": True,
                      "observation_id": "obs_<identity[:16]>", "derived_analysis_id": "analysis-<identity[:16]>"},
         "errors": {"codes": list(ERROR_CODES), "exit_codes": dict(EXIT_CODES), "classes": dict(ERROR_CLASS_OF), "success_exit_code": 0,
                    "class_semantics": {"FATAL": "terminal: retrying the unchanged request rejects identically", "RETRYABLE": "a bounded retry of the same request may succeed",
@@ -322,10 +323,11 @@ def validate_parameters(kind: str, params: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def analysis_identity(asset_fingerprint: str, tool: str, analyzer_version: str, kind: str, parameters: Dict[str, Any]) -> str:
-    """Same input + analyzer + analyzer version + kind + parameters -> same identity. Used for the derived
-    analysis id and the cache key (docs/architecture.md, Determinism)."""
-    return stable_hash({"asset_fingerprint": asset_fingerprint, "analyzer": tool_id(tool), "analyzer_version": analyzer_version,
+def analysis_identity(asset_fingerprint: str, tool: str, algorithm_version: str, kind: str, parameters: Dict[str, Any]) -> str:
+    """Same input + analyzer + algorithm version + kind + parameters -> same identity. Used for the derived
+    analysis id and the cache key (docs/architecture.md, Determinism). The package version is deliberately not part
+    of it: a release that does not change an analyzer's measurement keeps that analyzer's identities (ADR-028)."""
+    return stable_hash({"asset_fingerprint": asset_fingerprint, "analyzer": tool_id(tool), "algorithm_version": algorithm_version,
                         "kind": kind, "parameters": parameters})
 
 
@@ -333,7 +335,7 @@ def analysis_identity(asset_fingerprint: str, tool: str, analyzer_version: str, 
 OBSERVATION_REQUIRED = ("id", "asset_id", "kind", "data", "source", "analysis_id", "observed_at")
 
 
-def make_observation(*, identity: str, asset_id: str, kind: str, tool: str, analyzer_version: str, data: Dict[str, Any],
+def make_observation(*, identity: str, asset_id: str, kind: str, tool: str, analyzer_version: str, algorithm_version: str, data: Dict[str, Any],
                      analysis_id: str, observed_at: str, parameters: Dict[str, Any], asset: Dict[str, Any], seconds: float) -> Dict[str, Any]:
     return {
         "id": "obs_" + identity[:16],
@@ -343,6 +345,7 @@ def make_observation(*, identity: str, asset_id: str, kind: str, tool: str, anal
         "source": source_for(tool, analyzer_version),
         "analysis_id": analysis_id,
         "observed_at": observed_at,
-        "analysis": {"identity": identity, "analyzer": tool_id(tool), "analyzer_version": analyzer_version, "parameters": parameters, "seconds": seconds},
+        "analysis": {"identity": identity, "analyzer": tool_id(tool), "analyzer_version": analyzer_version,
+                     "algorithm_version": algorithm_version, "parameters": parameters, "seconds": seconds},
         "asset": asset,
     }

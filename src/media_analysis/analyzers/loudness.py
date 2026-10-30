@@ -50,6 +50,7 @@ def parse_ebur128(stderr: str) -> Dict[str, Any]:
 
 class LoudnessAnalyzer(Analyzer):
     id = "loudness"
+    algorithm_version = "1"
     supported_kinds = ("loudness",)
     required_capabilities = ("ffprobe", "ffmpeg", "filter:ebur128")
 

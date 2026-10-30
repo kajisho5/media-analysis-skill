@@ -204,7 +204,7 @@ def test_scene_parser():
 
 
 def _obs(**over):
-    base = dict(identity="ab" * 32, asset_id="asset-1", kind="media_probe", tool="probe", analyzer_version=VERSION, data={"container": {"duration": 6.0}},
+    base = dict(identity="ab" * 32, asset_id="asset-1", kind="media_probe", tool="probe", analyzer_version=VERSION, algorithm_version="1", data={"container": {"duration": 6.0}},
                 analysis_id="analysis-1", observed_at="2026-09-04T00:00:00Z", parameters={}, asset={"path": "/x", "fingerprint": "f", "size": 1}, seconds=0.1)
     base.update(over)
     return make_observation(**base)
@@ -324,14 +324,14 @@ def test_cache_hit_and_miss(tmp_path):
         eng2.analyze(req(f, cache_policy="sometimes"))
 
 
-def test_cache_invalidation_asset_version_parameters(tmp_path):
+def test_cache_invalidation_asset_algorithm_version_parameters(tmp_path):
     f = tmp_path / "a.bin"
     f.write_bytes(b"media")
     eng, an = make_engine(tmp_path)
     eng.analyze(req(f))
     f.write_bytes(b"media changed")
     assert eng.analyze(req(f))["cache"]["status"] == "miss" and an.calls == 2
-    an.version = "0.1.1"
+    an.algorithm_version = "2"
     assert eng.analyze(req(f))["cache"]["status"] == "miss" and an.calls == 3
     assert eng.analyze(req(f))["cache"]["status"] == "hit" and an.calls == 3
     # parameter invalidation with a parameterised kind
@@ -356,8 +356,79 @@ def test_cache_corrupt_entry_is_a_miss(tmp_path):
     entry.write_text("{not json")
     assert eng.analyze(req(f))["cache"]["status"] == "invalid" and an.calls == 3
     with pytest.raises(AnalysisError) as e:
-        eng.cache.get("not-hex", asset_fingerprint="", analyzer="", analyzer_version="", kind="", parameters={})
+        eng.cache.get("not-hex", asset_fingerprint="", analyzer="", algorithm_version="", kind="", parameters={})
     assert e.value.code == "CACHE_INVALID"
+
+
+# ---- cache survives releases (ADR-028): the package version is provenance, the algorithm version is the identity
+def test_package_patch_bump_keeps_cache(tmp_path, monkeypatch):
+    import media_analysis.cache as cache_mod
+    f = tmp_path / "a.bin"
+    f.write_bytes(b"media")
+    eng, an = make_engine(tmp_path)
+    an.version = "0.1.3"
+    monkeypatch.setattr(cache_mod, "VERSION", "0.1.3")
+    r1 = eng.analyze(req(f))
+    key = r1["cache"]["key"]
+    entry = json.loads((tmp_path / "cache" / key[:2] / f"{key}.json").read_text())
+    assert entry["metadata"]["package_version"] == "0.1.3" and entry["metadata"]["algorithm_version"] == an.algorithm_version
+    # the release workflow bumps the patch version (docs-only release): same analyzer, same measurement
+    an.version = "0.1.4"
+    monkeypatch.setattr(cache_mod, "VERSION", "0.1.4")
+    eng2, _ = make_engine(tmp_path, analyzer=an)
+    r2 = eng2.analyze(req(f))
+    assert r2["cache"] == {"status": "hit", "policy": "use", "key": key} and an.calls == 1 and r2["usage"]["analyzer_calls"] == 0
+    # the cached Observation keeps the provenance of the package version that measured it
+    assert r2["observation"]["source"] == "media-analysis/probe@0.1.3" and r2["observation"]["analysis"]["analyzer_version"] == "0.1.3"
+    assert r2["observation"]["id"] == r1["observation"]["id"] and r2["observation"]["analysis"]["identity"] == key
+    # a fresh measurement records the new package version
+    r3 = eng2.analyze(req(f, cache_policy="bypass"))
+    assert r3["observation"]["source"] == "media-analysis/probe@0.1.4" and r3["observation"]["analysis"]["algorithm_version"] == an.algorithm_version
+    assert r3["observation"]["analysis"]["identity"] == key and an.calls == 2
+
+
+def test_algorithm_version_bump_invalidates_only_that_analyzer(tmp_path):
+    f = tmp_path / "a.bin"
+    f.write_bytes(b"media")
+
+    class Sil(CountingAnalyzer):
+        id, supported_kinds, required_capabilities = "silence", ("silence",), ("ffprobe",)
+
+    class Both:
+        def __init__(self, *analyzers):
+            self.by_kind = {k: a for a in analyzers for k in a.supported_kinds}
+        def for_kind(self, kind):
+            return self.by_kind[kind]
+        def all(self):
+            return list(self.by_kind.values())
+
+    probe, sil = CountingAnalyzer(), Sil()
+    policy = PathPolicy(workspace=str(tmp_path))
+
+    def engine():
+        return AnalysisEngine(caps=fake_caps("ffprobe"), registry=Both(probe, sil), policy=policy,
+                              cache=ObservationCache(str(tmp_path / "cache"), policy), clock=lambda: "2026-09-04T00:00:00Z")
+    eng = engine()
+    p1, s1 = eng.analyze(req(f)), eng.analyze(req(f, kind="silence"))
+    assert (p1["cache"]["status"], s1["cache"]["status"], probe.calls, sil.calls) == ("miss", "miss", 1, 1)
+    sil.algorithm_version = str(int(sil.algorithm_version) + 1)     # silence's measurement changed, probe's did not
+    eng = engine()
+    p2, s2 = eng.analyze(req(f)), eng.analyze(req(f, kind="silence"))
+    assert p2["cache"]["status"] == "hit" and probe.calls == 1 and p2["observation"]["id"] == p1["observation"]["id"]
+    assert s2["cache"]["status"] == "miss" and sil.calls == 2 and s2["cache"]["key"] != s1["cache"]["key"]
+    assert s2["observation"]["analysis"]["algorithm_version"] == sil.algorithm_version
+    assert eng.analyze(req(f, kind="silence"))["cache"]["status"] == "hit" and sil.calls == 2
+
+
+def test_every_analyzer_declares_its_algorithm_version():
+    for a in default_registry().all():
+        assert "algorithm_version" in type(a).__dict__, f"{type(a).__name__} must declare its own algorithm_version"
+        assert a.algorithm_version.isdigit() and int(a.algorithm_version) >= 1
+        assert a.version == VERSION                      # tool version stays the package version (ADR-002, provenance)
+    spec = {t["tool_id"]: t for t in skill_contract()["tools"]}
+    assert all(spec[f"media-analysis/{a.id}"]["algorithm_version"] == a.algorithm_version for a in default_registry().all())
+    assert "analyzer_version" not in skill_contract()["identity"]["analysis_identity"]
+    assert "algorithm_version" in skill_contract()["identity"]["analysis_identity"]
 
 
 # ---- 22-23 timeout / budget

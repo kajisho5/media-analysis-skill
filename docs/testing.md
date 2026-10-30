@@ -2,7 +2,7 @@
 
 ```text
 pip install -e . pytest
-python -m pytest -q               # 107 tests: unit + contract + integration + evals
+python -m pytest -q               # 111 tests: unit + contract + integration + evals
 python evals/run.py               # 9 measurement eval cases with expected values and tolerances
 python evals/contract_evals.py    # 17 contract eval cases
 ```
@@ -35,7 +35,9 @@ rejection · kind validation · parameter validation (unknown, type, range, NaN)
 unknown) / audio parsers · silence parser + classification · ebur128 parser (incl. `-inf`) · integrity status
 (PASS / WARN / FAIL) · scdet parser · malformed result · wrong asset / kind / analysis id / source · deterministic
 identity (parameter order, asset / version / parameter changes) · cache hit / miss / relabel / disabled · cache
-invalidation by asset, analyzer version, parameters · tampered and unreadable cache entries · timeout (real
+invalidation by asset, algorithm version, parameters · a package (patch) version bump keeps the cache, with the
+measuring version still in `source` · an algorithm version bump invalidates only that analyzer's entries · every
+analyzer declares its own `algorithm_version` · tampered and unreadable cache entries · timeout (real
 subprocess) · budget (calls, total seconds, cache hits free) · unsupported analyzer · dry-run runs nothing and still
 validates · path policy (roots, symlink escape, directories, NUL, workspace writes, argv shape) · no shell in source ·
 secret leakage (env value, secret-looking key, child environment) · command / argv leakage · error model.
@@ -54,9 +56,9 @@ results and contract · doctor per-Capability AVAILABLE / MISSING · `check_cont
 self-conformance (`conformance.py`, SKILL_SPEC.md section 8): all 8 checks PASS or honestly NOT_IMPLEMENTED, and
 each fallible check is proven to actually detect a broken implementation (a validator that stops rejecting, a leaky
 PathPolicy stub, a real `shell=True` planted in a scanned file) · CLI smoke ·
-**21 drift fixtures**
+**22 drift fixtures**
 (`tests/contract/cases`: valid, unsupported schema, missing / extra tool, tool / capability / kind / kind_to_tool /
-version / schema-version / schema / invocation / provenance / exit-code mismatch, provides missing / renamed /
+version / algorithm-version / schema-version / schema / invocation / provenance / exit-code mismatch, provides missing / renamed /
 bad lifecycle / extra kind, denylist narrowed, error class drift) · `contract --check` CLI (file,
 stdin, unreadable) · no confidence / judgement vocabulary in analyzers · batch identity independent of order.
 
@@ -90,7 +92,7 @@ C07 malicious command rejected · C08 path traversal rejected (input and cache d
 C10 cache hit produces the identical observation with zero analyzer calls (real ffmpeg) · C11 contract / registry
 consistency over every drift fixture · C12 invalid input JSON over `run -` · C13 timeout process tree (real ffmpeg) ·
 C14 batch identity · C15 no-audio media · C16 deterministic result across engines (real ffmpeg) · C17 cache
-invalidation (content, version, parameters, corruption).
+invalidation (content and algorithm version invalidate, a package version bump does not; corruption is `invalid`).
 
 ## Measurement evals (`evals/cases/*.json`, `evals/run.py`, `tests/test_evals.py`)
 

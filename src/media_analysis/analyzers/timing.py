@@ -26,6 +26,7 @@ def av_mismatch(p: Dict[str, Any], tolerance: float) -> Dict[str, Any]:
 
 class TimingAnalyzer(Analyzer):
     id = "timing"
+    algorithm_version = "1"
     supported_kinds = ("duration", "timing")
     required_capabilities = ("ffprobe",)
 

@@ -41,6 +41,7 @@ def classify(segments: List[Tuple[float, Optional[float]]], duration: Optional[f
 
 class SilenceAnalyzer(Analyzer):
     id = "silence"
+    algorithm_version = "1"
     supported_kinds = ("silence",)
     required_capabilities = ("ffprobe", "ffmpeg", "filter:silencedetect")
 
