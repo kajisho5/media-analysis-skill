@@ -1,48 +1,105 @@
 # Repository state
 
-Last updated: 2026-09-08 (autonomous maintenance session). Version 0.1.0, contract `media-analysis/contract@1`.
+Last updated: 2026-10-30, checked against `main` at `45d07ad` (Release v0.1.3). Every statement below was checked
+against the code, a command run or the GitHub API on that date; anything that could not be checked is marked
+**unverified**.
+
+## Version
+- Single source: `pyproject.toml` `version`. `media_analysis.VERSION` (`src/media_analysis/__init__.py`, PR #17)
+  reads this checkout's `pyproject.toml` when run from source, otherwise the installed `media_analysis_skill-*.dist-info`
+  METADATA; there is no hard-coded constant. `media-analysis --version`, `contract --json` → `version`, every tool /
+  analyzer `version`, `doctor` / `conformance` → `skill.version` and Observation `source` all report it.
+- On `45d07ad` it is `0.1.3`, equal to the newest git tag `v0.1.3`.
+- The release workflow (`.github/workflows/release.yml` + `.github/scripts/release.py`) bumps `pyproject.toml`, writes
+  `CHANGELOG.md`, tags and creates a GitHub release on **every push to `main`** (patch by default; minor / major from PR
+  labels). So the number above goes stale with the next merge; read the live value with `media-analysis --version`.
+- Tags / GitHub releases: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v0.1.3`. Not on PyPI (`pypi.org/pypi/media-analysis-skill`
+  returns 404; the publish step runs only when a `PYPI_API_TOKEN` secret exists). Install is `pip install -e .` from a clone.
 
 ## CURRENT (implemented, tested, on main)
-- 10 analysis kinds / 9 tools, deterministic identity, cache (use / bypass / only), budget, process-group timeout,
-  verification, path policy, response envelope, exit codes, error classes (FATAL / RETRYABLE / BLOCKED).
-- Contract: `contract --json` (tools / kinds / provides / schemas / errors / security), `contract --check` drift
-  detection with 21 mutation fixtures, `doctor --json` with per-Capability AVAILABLE / MISSING.
-- Self-conformance: `conformance --json` runs all 8 AI-video-production-OS `SKILL_SPEC.md` section 8 checks against
-  this installation (real requests + real source scan), each proven to actually detect a broken implementation.
-  Manually cross-verified (not a committed test / dependency) against the OS's own real `registry/` code on its
-  `main` branch (now merged there): `registry.CapabilityRegistry.register_contract(skill_contract())` succeeds,
-  `providers_of("measure.audio.loudness")` resolves this Skill, and the OS's own
-  `conformance.check_publishes_contract` / `check_lifecycle_declared` pass against our real contract document —
-  not just our own reimplementation of those rules in `tests/contract/os_registry_contract.json`.
-- OS integration (additive): `provides` publishes 10 Capability ids matching AI-video-production-OS
-  `CAPABILITY_MATRIX.md`; denylist is a superset of `SKILL_SPEC.md` 3.1 and recursive; OS registry rules recorded
-  in `tests/contract/os_registry_contract.json`; agent rules in `tests/contract/agent_skill_package_contract.json`.
-- video-production-agent adapter: `MediaAnalysisAdapter` (`src/video_agent/tools/media_analysis/adapter.py` in that
-  repository, 298 lines — contract validation, request building, response checking, subprocess execution) is
-  version-aligned (`SUPPORTED_SKILL_VERSIONS = ("0.1.",)` matches this Skill's real `0.1.0`) and is registered /
-  consumed at agent startup (`video_agent/service.py`: `MEDIA_ANALYSIS_PACKAGE` import and
-  `registry.register_package(MEDIA_ANALYSIS_PACKAGE)`).
-- Tests: 107 (pytest), measurement evals 9/9, contract evals 17/17; CI on Linux 3.9 / 3.11, Windows, macOS with real FFmpeg.
-- Distribution: `pip install -e .` from a clone. **Not on PyPI, no git tags / GitHub releases yet.**
+- CLI `media-analysis` (`media_analysis.cli:main`), subcommands: `probe`, `analyze`, `run` (canonical machine
+  interface: `run <request.json | -> --json`, one response document on stdout), `doctor`, `contract`, `conformance`.
+- Contract `media-analysis/contract@1` (`schema_versions`: contract / request / response / observation all `1`).
+  9 tools, 10 analysis kinds, derived from the analyzer registry:
 
-## KNOWN LIMITATIONS
-- Reading is unrestricted unless `--allowed-input` is given (documented; embedders must set roots).
-- Packet-timestamp kinds hold one dict per packet in memory (~100 MB for an hour of A/V); no large-file optimisation.
-- Windows timeout kills the process tree with `taskkill`; POSIX uses process groups. Verified in CI.
-- Capability lifecycle is EXPERIMENTAL for all ids (no STABLE promise yet).
+  | Tool | Kinds | Capability id (`provides`) |
+  |---|---|---|
+  | `media-analysis/probe` | `media_probe` | `measure.media.probe` |
+  | `media-analysis/streams` | `stream_layout` | `measure.media.stream_layout` |
+  | `media-analysis/video` | `video_format` | `measure.video.probe` |
+  | `media-analysis/audio` | `audio_format` | `measure.audio.probe` |
+  | `media-analysis/timing` | `duration`, `timing` | `measure.media.duration`, `measure.video.timing` |
+  | `media-analysis/silence` | `silence` | `measure.audio.silence` |
+  | `media-analysis/loudness` | `loudness` | `measure.audio.loudness` |
+  | `media-analysis/integrity` | `integrity` | `measure.audio.integrity` |
+  | `media-analysis/scenes` | `scene_detection` | `measure.video.scene_detection` |
 
-## NOT DONE / PLANNED (in value order)
-1. First release: git tag `v0.1.0` + GitHub release notes (needs human go-ahead for the public release step).
-2. ~~OS conformance harness hooks~~ DONE: `media-analysis conformance --json` covers all 8 SKILL_SPEC.md section 8
-   checks (2 honestly NOT_IMPLEMENTED where the check does not apply to a measurement-only Skill).
-3. ~~video-production-agent adapter~~ DONE: implemented in that repository (recipe in docs/architecture.md),
-   version-aligned, registered / consumed at agent startup — see CURRENT above.
-4. Optional MCP transport over the same request / response schemas (ADR-010: not before a consumer exists).
+  All 10 `provides` entries are lifecycle `EXPERIMENTAL`. Required environment capabilities (`capability_names`):
+  `ffmpeg`, `ffprobe`, `filter:ebur128`, `filter:scdet`, `filter:silencedetect`.
+- Errors: 12 codes with exit codes 2–13 (`INVALID_INPUT` … `CACHE_MISS`), each with a class `FATAL` / `RETRYABLE` /
+  `BLOCKED` (ADR-023). Execution is `local_subprocess`, ffmpeg / ffprobe found by PATH lookup only, no shell, no
+  network, no AI. Request denylist (recursive, case-insensitive): `command argv args shell cmd exec filter_complex
+  filter api_key token env` (ADR-024).
+- Deterministic analysis identity, cache (use / bypass / only), budget, process-group timeout (POSIX `setsid` +
+  `killpg`; Windows `CREATE_NEW_PROCESS_GROUP` + `taskkill /T /F`), verification, path policy.
+- `contract --check <file>` drift detection (21 mutation fixtures in `tests/contract/cases`, ADR-020).
+- `doctor --json` reports per Capability AVAILABLE / MISSING (ADR-025).
+- `conformance --json` runs the 8 AI-video-production-OS `SKILL_SPEC.md` section 8 checks (ADR-027): 6 PASS,
+  2 NOT_IMPLEMENTED as not applicable (`no_clobber_input`: no tool writes output; `dependency_version_ranges`: no
+  `dependencies` field is published).
+- Cross-check with the OS's own registry (read-only, AI-video-production-OS `main` `3e5bae1`, 2026-10-30):
+  `registry.CapabilityRegistry.register_contract(<live contract>)` registers 10 providers,
+  `providers_of("measure.audio.loudness")` resolves `media-analysis/loudness`, and `registry.conformance`
+  `check_publishes_contract` / `check_lifecycle_declared` both PASS. This is a manual check, not a committed test.
+
+## Who calls it
+- video-production-agent (`kajisho5/video-production-agent`, read-only check of `main` `33d739f`, 2026-10-30):
+  - Adapter `src/video_agent/tools/media_analysis/` (`adapter.py` 297 lines, `locate.py`, pinned
+    `contract_0.1.3.json`). Version gate `SUPPORTED_SKILL_VERSIONS = ("0.1.",)`, `SUPPORTED_CONTRACT_VERSIONS = ("1",)`.
+    Its `check_contract` accepts this repository's live 0.1.3 contract with no errors, and the pinned snapshot's
+    `tools` and `provides` equal the live ones.
+  - Located from `VIDEO_AGENT_MEDIA_ANALYSIS_DIR` / an explicit dir, then `~/.claude/skills/media-analysis-skill`,
+    `./vendor/media-analysis-skill`, `../media-analysis-skill`, then `media-analysis` on PATH. Run as a subprocess;
+    the agent never imports the package.
+  - Registered at startup (`src/video_agent/service.py`: `registry.register_package(MEDIA_ANALYSIS_PACKAGE)`), and all
+    9 tools appear in `src/video_agent/skills/registry.py` (probe / silence / loudness alongside the ffmpeg-skill
+    equivalents; streams / video / audio / timing / integrity / scenes as `*_analysis` skills).
+- No other caller found in the sibling checkouts; whether anything outside them calls it is **unverified**.
+
+## Tests and CI
+- `python -m pytest -q`: **107 passed** locally on 2026-10-30 (Python 3.11.17, FFmpeg 6.1.1, Linux) from 77 test
+  functions — collected per file: `test_contract.py` 42, `test_integration.py` 33, `test_unit.py` 30, `test_evals.py` 2.
+- `python evals/run.py` 9/9 measurement evals; `python evals/contract_evals.py` 17/17 contract evals;
+  `python -m pyflakes src tests evals` clean.
+- `.github/workflows/tests.yml` (push to main, every PR), real FFmpeg on every job:
+  Ubuntu Python 3.9 (pinned to `ubuntu-24.04`, which still has 3.9), Ubuntu 3.11, Windows 3.11, macOS 3.11. Each job
+  runs pytest, both evals, `doctor --json`, `contract --json` + `contract --check`, and `conformance --json`.
+- Other workflows: `codeql.yml` (push / PR to main, weekly), `pr-labeler.yml` (release-drafter autolabeler),
+  `release.yml` (see Version). On `main` at `8a9964f` (the last code commit) `tests`, `codeql` and `release` all succeeded.
+
+## KNOWN LIMITATIONS / GAPS
+- Reading is unrestricted unless `--allowed-input` is given (CLI default: "any readable regular file"); embedders must
+  set roots.
+- `timing` (packet timestamps) parses one dict per packet into memory; no streaming for long files. The earlier
+  "~100 MB for an hour of A/V" figure was not re-measured and is **unverified**.
+- Every Capability is `EXPERIMENTAL`; no STABLE promise yet.
+- Analyzer version == package version (`analyzers/base.py`), and the release workflow bumps the package version on
+  every merge. Cached Observations are therefore invalidated by every release, including docs-only ones, while
+  README "Versioning" says invalidation happens on minor bumps.
+- Stale `0.1.0` in docs: README "Versioning" and its sample response, SKILL.md sample response, `docs/tools.md` header,
+  `docs/observation.md` samples. The code reports the real version; only the prose is behind.
+- No MCP transport (ADR-010: not before a consumer needs one).
+
+## NOT DONE / PLANNED
+See `ECOSYSTEM_ROADMAP.md`. Step 1 (single-source the version) was implemented by PR #17; step 3 (noise floor / SNR,
+A/V offset measurements, only if not qc-skill's) is open.
 
 ## NOT IN SCOPE (by design)
 AI / inference / decisions, media editing, subtitles, transcription, semantic scene understanding, plugin loading.
 
-## Recent history
-- PR #1 Skill 0.1.0 + agent-ready contract (merged), PR #2 sponsor funnel, PR #3 README landing page,
-  PR #4 `provides` (from another session; verified here with real FFmpeg and merged), PR #5 OS conformance hardening,
-  PR #6 UTF-8 JSON protocol for non-ASCII paths (ADR-026, stacked on #5).
+## History (merged PRs)
+#1 Skill 0.1.0 + agent-ready contract · #2 sponsor link · #3 README landing page · #4 `provides` · #5 OS conformance
+hardening · #6 UTF-8 JSON protocol (ADR-026) · #8 STATE.md adapter note · #9 release / labeler / Dependabot / CodeQL ·
+#10 README header · #11 Python 3.9 on ubuntu-24.04 · #15 Actions bump + release-drafter v7 · #16 ECOSYSTEM_ROADMAP.md ·
+#17 version single-sourced from pyproject.toml. (#7 is an issue, not a PR; Dependabot PRs #12–#14 were closed
+unmerged, superseded by #15.)
