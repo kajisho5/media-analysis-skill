@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.4 - 2026-10-30
+
+- docs: refresh STATE.md against main (roadmap step 2) (#18) (95c7dee)
+
 ## v0.1.3 - 2026-10-30
 
 - fix: report the release version, single-sourced from pyproject.toml (#17) (8a9964f)
