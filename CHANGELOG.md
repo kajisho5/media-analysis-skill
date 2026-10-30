@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.2 - 2026-10-30
+
+- Add ECOSYSTEM_ROADMAP.md: gaps, wiring and PR-sized steps from the 2026-10-30 ecosystem audit (#16) (64903a2)
+
 ## v0.1.1 - 2026-10-23
 
 - ci: bump GitHub Actions, and resolve release versions with release-drafter v7 dry-run (#15) (b1d14f9)
