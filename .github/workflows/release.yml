@@ -31,7 +31,7 @@ jobs:
         # v7's dry-run resolves without writing a draft. v6 with disable-releaser skipped the drafting
         # that computes resolved_version, so every release after the first would have found it empty
         # and quietly released nothing.
-        uses: release-drafter/release-drafter@v7
+        uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
         with:
           config-name: release-drafter.yml
           dry-run: true

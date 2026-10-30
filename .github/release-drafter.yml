@@ -14,10 +14,11 @@ categories:
 # Used only for autolabeling PRs (.github/workflows/pr-labeler.yml) and for resolving the next version
 # (.github/workflows/release.yml, dry-run). The changelog body itself is generated separately from `git log`
 # (.github/scripts/release.py) and does not use this config's `template`.
+# `major`/`breaking` is deliberately NOT autolabeled from title text: the autolabeler runs on
+# pull_request_target, so a fork PR's author controls the title, and a label it adds is never removed
+# after the title is edited -- the version-resolver would then cut a major release on merge. A maintainer
+# applies `major`/`breaking` by hand when a change is actually breaking; only that label feeds the bump.
 autolabeler:
-  - label: "major"
-    title:
-      - "/^(breaking|major)(\\(.+\\))?!?:/i"
   - label: "feature"
     title:
       - "/^feat(\\(.+\\))?:/i"
