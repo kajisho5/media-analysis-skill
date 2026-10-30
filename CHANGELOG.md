@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.5 - 2026-10-30
+
+- fix: key the cache by per-analyzer algorithm version, not the package version (#19) (2ce04e0)
+
 ## v0.1.4 - 2026-10-30
 
 - docs: refresh STATE.md against main (roadmap step 2) (#18) (95c7dee)
