@@ -1,0 +1,11 @@
+{
+  "id": "11_noise_floor_cleaned",
+  "fixture": "cleaned",
+  "kind": "noise_floor",
+  "derivation": "cleaned.wav is noisy.wav with the noise amplitude at 0.001 instead of 0.01: noise RMS -64.77 dBFS, the same -9.03 dBFS tone, so the SNR rises by 20 dB to 55.74 dB (voice-enhance-skill step 3's acceptance: 'SNR rises on a synthetic voice+noise fixture')",
+  "expect": [
+    {"path": "data.noise_floor_dbfs", "op": "approx", "value": -64.77, "tolerance": 0.5},
+    {"path": "data.signal_level_dbfs", "op": "approx", "value": -9.03, "tolerance": 0.1},
+    {"path": "data.snr_db", "op": "approx", "value": 55.74, "tolerance": 0.5}
+  ]
+}

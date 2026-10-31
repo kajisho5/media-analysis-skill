@@ -12,7 +12,7 @@ from typing import Dict, List, Optional
 from .runner import run_argv, which
 
 CAPABILITY_STATUS = ("AVAILABLE", "MISSING", "UNKNOWN")
-FILTERS_OF_INTEREST = ("ebur128", "silencedetect", "scdet")
+FILTERS_OF_INTEREST = ("ebur128", "silencedetect", "scdet", "astats")
 
 
 @dataclass

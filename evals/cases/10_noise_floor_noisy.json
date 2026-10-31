@@ -1,0 +1,14 @@
+{
+  "id": "10_noise_floor_noisy",
+  "fixture": "noisy",
+  "kind": "noise_floor",
+  "derivation": "noisy.wav: a 440 Hz sine of amplitude 0.5 (RMS 0.5/sqrt(2) = -9.03 dBFS) on for the first 0.5 s of every second, white noise uniform in [-0.01, 0.01] (RMS 0.01/sqrt(3) = -44.77 dBFS) throughout. 50 ms windows align with the 0.5 s bursts, so half the 80 windows are noise only (p10 = the noise RMS) and half are tone + noise (p95 = the tone RMS; the noise adds < 0.001 dB). SNR = -9.03 - (-44.77) = 35.74 dB",
+  "expect": [
+    {"path": "data.window_count", "value": 80},
+    {"path": "data.noise_floor_dbfs", "op": "approx", "value": -44.77, "tolerance": 0.5},
+    {"path": "data.signal_level_dbfs", "op": "approx", "value": -9.03, "tolerance": 0.1},
+    {"path": "data.snr_db", "op": "approx", "value": 35.74, "tolerance": 0.5},
+    {"path": "data.digital_silence_windows", "value": 0},
+    {"path": "data.unmeasurable", "value": []}
+  ]
+}

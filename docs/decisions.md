@@ -230,3 +230,60 @@
   one last invalidation — identities computed under ADR-002 are not looked up again, and observation ids change
   once.
 
+
+## ADR-029 Acceptance measurements for the new Skills: a noise floor / SNR estimate and the A/V start offset
+- Context: roadmap step 3 asks for "measurements new skills need for acceptance — noise floor / SNR (voice-enhance),
+  A/V offset — only if not qc-skill's". Read on 2026-10-31 (read-only): every sibling `ECOSYSTEM_ROADMAP.md` in the
+  ecosystem, `voice-enhance-skill/docs/decisions.md` ADR-001, qc-skill's contract (`measurements`, `provides`) and
+  ffmpeg-skill's `_contract.py`. The acceptance criteria ("Done when") that need a measured value are:
+
+  | Skill / step | acceptance criterion | measurement it needs | who measures it today |
+  |---|---|---|---|
+  | voice-enhance 3 ISOLATE | "SNR rises on a synthetic voice+noise fixture" | SNR / noise floor | nobody: qc-skill has peak / RMS / clipping / true peak (`astats`, `ebur128`), no floor or SNR; ffmpeg-skill computes a 20th-percentile floor inside `caption.py` but does not publish it |
+  | voice-enhance 4 DEREVERB | "same pattern" (ADR-001: "SNR / reverberation measures") | a reverberation measure (RT60 / DRR / C50) | nobody |
+  | voice-enhance 5 BLEED_REDUCE | "lower cross-talk energy on a 2-track fixture" | energy of one track / channel | per channel: nobody (qc-skill's per-channel levels are whole-file peak / RMS, not a floor) |
+  | voice-enhance 6 remux, dubbing 4/5 | "video stream byte-identical", "A/V duration match" | A/V duration difference, A/V start offset | duration: here (`timing.av_mismatch`) and qc-skill; start offset: nobody |
+  | dubbing 3, sound-design 2 | "duration within tolerance" | duration | here (`duration`), qc-skill, ffmpeg-skill `probe` |
+  | video-production-agent 10 | sharpness / exposure scores for take selection | picture sharpness / exposure | nobody (named there as a gap) |
+
+  The roadmap scopes this step to the first two rows' family (noise floor / SNR, A/V offset); sharpness / exposure is
+  recorded as a further gap, not implemented here.
+- Decision 1 — new kind `noise_floor` (tool `media-analysis/noise`, Capability `measure.audio.noise_floor`): ffmpeg
+  `astats` with `reset=1` after `asetnsamples` gives the RMS level of consecutive non-overlapping windows (default
+  50 ms, sized from the stream's own sample rate); `ametadata=print` puts one value per window on stderr (log level
+  `repeat+info`, so ffmpeg never folds identical lines). The noise floor is a low nearest-rank percentile of those
+  levels (default p10), the signal level a high one (p95), and `snr_db` their difference — the standard no-reference
+  estimate for speech with pauses. All channels pooled by default; `channel` (0..63) measures one channel, which is
+  what BLEED_REDUCE's "cross-talk energy" on a 2-track fixture needs (two streams: use `stream`). Digital-silence
+  windows stay `-inf`: a percentile that lands on one is `null` and listed in `unmeasurable`, never a number.
+  The eval pair `noisy.wav` / `cleaned.wav` (same tone bursts, noise 20 dB apart) measures SNR 35.7 → 55.7 dB, which
+  is exactly voice-enhance step 3's acceptance shape.
+  - Not chosen: a reference-based SNR (`10·log10(Σref² / Σ(x−ref)²)`). It is exact on synthetic fixtures but needs a
+    second input aligned to the sample, which no request of this Skill takes (one `input` per request), and the
+    real use — a field recording before / after ISOLATE — has no clean reference. The percentile estimate works on
+    both. Not chosen: ffmpeg's own `astats` `Noise_floor`: it is a whole-stream single number (the minimum of the
+    local peak level over `length`-second windows), a peak-based floor that is not on the same scale as an RMS signal
+    level, comes with no matching "signal level" to subtract it from, and cannot be re-derived at another percentile.
+    Window RMS levels keep the whole distribution (`percentiles_dbfs`), so the caller sees how the floor was chosen.
+  - Not chosen now: a reverberation measure for DEREVERB. Blind RT60 / DRR estimation from speech is a model-based
+    estimate (no deterministic, published, threshold-free method that this Skill could state without a confidence
+    claim, which ADR-001 / CLAUDE.md forbid). It stays a gap until a method is chosen in its own ADR; voice-enhance
+    step 4 can meanwhile measure its fixture's noise floor and SNR with this kind.
+- Decision 2 — `timing` adds `av_start_offset`: the first audio stream's `start_time` minus the first video stream's,
+  `{status, video_index, audio_index, video_start_time, audio_start_time, offset, tolerance, within_tolerance}`,
+  `not_performed` without both start times. This is the offset a mux introduces (an `-itsoffset`, an edit list, a
+  replaced audio track — voice-enhance step 6 and dubbing put audio back with ffmpeg-skill `audio --replace`); the
+  existing `av_mismatch` only compares durations, which stay equal when the whole track is shifted. New parameter
+  `av_start_offset_tolerance`, default 0.045 s: ITU-R BT.1359-1's detectability threshold is audio 45 ms early /
+  125 ms late; the default uses the tighter bound on both sides. As with `av_mismatch`, `within_tolerance` is a
+  convenience comparison against the caller's number, not a verdict.
+  - Not chosen: lip-sync offset from content (does the sound match the mouth?). It needs a sync marker (flash + beep)
+    or a model; neither is deterministic measurement of arbitrary media. Not chosen: the offset between two
+    recordings by audio cross-correlation — that is ffmpeg-skill's `sync` (offset / drift JSON), so re-implementing
+    it here would be a second owner for the same job.
+- Versions: `noise` starts at `algorithm_version` "1"; `timing` goes to "2" (a new `data` key, ADR-028 rule), which
+  invalidates cached `duration` / `timing` Observations once. Contract `@1` additive: one tool, one kind, one
+  `provides` entry, one parameter, `filter:astats` in `capability_names`. `measure.audio.noise_floor` is new — not in
+  AI-video-production-OS `CAPABILITY_MATRIX.md` yet, and not a collision (qc-skill publishes no noise measurement).
+  video-production-agent pins this contract (`tools/media_analysis/contract_*.json`) and needs a re-pin to see the
+  new tool.

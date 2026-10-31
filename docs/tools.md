@@ -17,6 +17,7 @@ and the contract disagree.
 | `media-analysis/loudness` | `loudness` | ffprobe, ffmpeg, filter:ebur128 | probe + ffmpeg `-af ebur128=peak=true -f null -` |
 | `media-analysis/integrity` | `integrity` | ffprobe, ffmpeg | probe + ffmpeg full decode `-f null -` + `-show_packets` |
 | `media-analysis/scenes` | `scene_detection` | ffprobe, ffmpeg, filter:scdet | probe + ffmpeg `-vf scdet,metadata=print -f null -` |
+| `media-analysis/noise` | `noise_floor` | ffprobe, ffmpeg, filter:astats | probe + ffmpeg `-af [pan,]asetnsamples,astats=reset=1,ametadata=print -f null -` |
 
 Every analyzer runs ffprobe at most once per request (shared context). Stream ordinals (`stream` parameter) follow
 ffmpeg's `0:v:N` / `0:a:N` numbering; attached pictures (cover art) are not video streams.
@@ -62,6 +63,10 @@ one (e.g. 16-bit WAV); it is never guessed from the channel count.
 longest_stream_duration, shortest_stream_duration`.
 `timing` adds `gap_factor`, `av_mismatch{status, video_index, audio_index, video_duration, audio_duration,
 difference, tolerance, within_tolerance}` (first video vs first audio stream; `not_performed` without both),
+`av_start_offset{status, video_index, audio_index, video_start_time, audio_start_time, offset, tolerance,
+within_tolerance}` (audio `start_time` − video `start_time`: positive = the first audio sample is presented after the
+first frame; parameter `av_start_offset_tolerance`, default 0.045 s, ITU-R BT.1359-1's 45 ms detectability bound;
+ADR-029 — a muxing offset, not lip sync),
 `packet_timestamps{<index>: {packet_count, first_pts, last_pts, first_dts, missing_pts, missing_dts,
 non_monotonic_dts, negative_pts, duplicate_pts, median_interval, min_interval, max_interval, gaps[], gap_count,
 keyframes}}`, `anomalies[{stream_index, type, count}]` (types `non_monotonic_dts`, `timestamp_gap`,
@@ -104,3 +109,20 @@ A check that was not performed never contributes PASS.
 score is above `threshold`; cuts closer than `min_scene_duration` to the previous kept cut are dropped. Scenes are
 the intervals between kept cuts; `representative_time` is the scene start. This is picture-change detection, not
 semantic scene understanding.
+
+## `noise_floor` (parameters `stream, channel, window, noise_percentile, signal_percentile`)
+
+`stream_index, stream_ordinal, channel, channels, sample_rate, window, window_samples, window_count,
+digital_silence_windows, noise_floor_percentile, signal_percentile, noise_floor_dbfs, signal_level_dbfs, snr_db,
+percentiles_dbfs{p5, p10, p25, p50, p75, p90, p95}, min_window_rms_dbfs, max_window_rms_dbfs, unmeasurable[],
+method, measurement` (ADR-029).
+
+- The stream (all channels pooled, or one `channel` via `pan`) is cut into consecutive non-overlapping windows of
+  `window` seconds (`window_samples` = round(sample rate × window); the last window may be shorter) and `astats`
+  reports each window's RMS level in dBFS.
+- `noise_floor_dbfs` is the `noise_percentile` nearest-rank percentile of the window levels, `signal_level_dbfs` the
+  `signal_percentile` one, `snr_db` = signal − noise. This is a no-reference estimate: it assumes the recording has
+  pauses (at least `noise_percentile` % of windows without the wanted signal). On continuous signal the floor is the
+  signal itself and `snr_db` is near 0 — a fact about the input, not an error.
+- Digital silence is `-inf` dBFS: a percentile landing on it is `null` and listed in `unmeasurable` (with `snr_db`).
+- Before / after comparisons (a denoiser's acceptance) should use the same parameters on both files.

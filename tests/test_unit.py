@@ -11,6 +11,8 @@ from media_analysis import SKILL_ID, VERSION
 from media_analysis.analyzers.base import AnalysisContext, Analyzer
 from media_analysis.analyzers.integrity import classify_errors, decide_status, parse_progress
 from media_analysis.analyzers.loudness import parse_ebur128
+from media_analysis.analyzers.noise import parse_window_levels, percentile, summarise
+from media_analysis.analyzers.timing import av_start_offset
 from media_analysis.analyzers.scenes import build_scenes, parse_scdet
 from media_analysis.analyzers.silence import classify, parse_silencedetect
 from media_analysis.budget import Budget, BudgetTracker
@@ -177,6 +179,36 @@ def test_loudness_parser():
     assert d["true_peak_dbtp"] is None and "true_peak_dbtp" in d["unmeasurable"] and d["integrated_below_absolute_gate"] is True
     with pytest.raises(AnalysisError):
         parse_ebur128("no summary here")
+
+
+# ---- noise_floor parser / summary (ADR-029)
+def test_noise_window_parser_and_summary():
+    text = ("[Parsed_ametadata_2 @ 0x1] frame:0    pts:0       pts_time:0\n"
+            "[Parsed_ametadata_2 @ 0x1] lavfi.astats.Overall.RMS_level=-40.5\n"
+            "[Parsed_ametadata_2 @ 0x1] lavfi.astats.Overall.RMS_level=-inf\n"
+            "[Parsed_ametadata_2 @ 0x1] lavfi.astats.Overall.RMS_level=nan\n"
+            "[Parsed_ametadata_2 @ 0x1] lavfi.astats.Overall.RMS_level=-9.0\n")
+    levels = parse_window_levels(text)
+    assert levels[0] == -40.5 and levels[1] == float("-inf") and levels[2] == -9.0 and len(levels) == 3
+    assert percentile([1.0, 2.0, 3.0, 4.0], 10) == 1.0 and percentile([1.0, 2.0, 3.0, 4.0], 95) == 4.0 and percentile([1.0, 2.0, 3.0, 4.0], 50) == 2.0
+    d = summarise([-60.0] * 5 + [-10.0] * 5, 10, 95)
+    assert d["noise_floor_dbfs"] == -60.0 and d["signal_level_dbfs"] == -10.0 and d["snr_db"] == 50.0 and d["unmeasurable"] == []
+    d = summarise([float("-inf")] * 2 + [-10.0] * 8, 10, 95)
+    assert d["noise_floor_dbfs"] is None and d["snr_db"] is None and d["digital_silence_windows"] == 2
+    assert d["unmeasurable"] == ["noise_floor_dbfs", "snr_db"] and d["min_window_rms_dbfs"] is None
+    with pytest.raises(AnalysisError):
+        summarise([], 10, 95)
+
+
+def test_av_start_offset_from_probe():
+    p = {"streams": [{"index": 0, "type": "video", "start_time": 0.0, "duration": 3.0, "disposition": []},
+                     {"index": 1, "type": "audio", "start_time": 0.5, "duration": 3.0, "disposition": []}]}
+    off = av_start_offset(p, 0.045)
+    assert off["offset"] == 0.5 and off["within_tolerance"] is False and off["audio_index"] == 1
+    p["streams"][1]["start_time"] = -0.02
+    assert av_start_offset(p, 0.045)["within_tolerance"] is True
+    p["streams"][1]["start_time"] = None
+    assert av_start_offset(p, 0.045)["status"] == "not_performed"
 
 
 # ---- 10-11 integrity result / malformed result

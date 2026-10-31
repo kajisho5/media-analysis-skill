@@ -15,6 +15,19 @@ def _durations(p: Dict[str, Any]) -> Dict[str, Any]:
             "longest_stream_duration": max(known) if known else None, "shortest_stream_duration": min(known) if known else None}
 
 
+def av_start_offset(p: Dict[str, Any], tolerance: float) -> Dict[str, Any]:
+    """First audio stream's start time minus the first video stream's (ADR-029): how late (positive) or early
+    (negative) the first audio sample is presented relative to the first video frame, from the container's own
+    timestamps. It is the offset a mux introduces (an -itsoffset, an edit list, a replaced audio track), not lip
+    sync: whether the sound matches the picture's content is not measurable without a sync marker or a model."""
+    v, a = streams_of(p, "video"), streams_of(p, "audio")
+    if not v or not a or v[0]["start_time"] is None or a[0]["start_time"] is None:
+        return {"status": "not_performed", "reason": "needs a video and an audio stream with declared start times"}
+    off = round(a[0]["start_time"] - v[0]["start_time"], 6)
+    return {"status": "performed", "video_index": v[0]["index"], "audio_index": a[0]["index"], "video_start_time": v[0]["start_time"],
+            "audio_start_time": a[0]["start_time"], "offset": off, "tolerance": tolerance, "within_tolerance": abs(off) <= tolerance}
+
+
 def av_mismatch(p: Dict[str, Any], tolerance: float) -> Dict[str, Any]:
     v, a = streams_of(p, "video"), streams_of(p, "audio")
     if not v or not a or v[0]["duration"] is None or a[0]["duration"] is None:
@@ -26,7 +39,7 @@ def av_mismatch(p: Dict[str, Any], tolerance: float) -> Dict[str, Any]:
 
 class TimingAnalyzer(Analyzer):
     id = "timing"
-    algorithm_version = "1"
+    algorithm_version = "2"   # 2: timing adds av_start_offset (ADR-029)
     supported_kinds = ("duration", "timing")
     required_capabilities = ("ffprobe",)
 
@@ -55,5 +68,6 @@ class TimingAnalyzer(Analyzer):
             if rep["duplicate_pts"]:
                 anomalies.append({"stream_index": int(idx), "type": "duplicate_pts", "count": rep["duplicate_pts"]})
         data.update({"gap_factor": parameters["gap_factor"], "av_mismatch": av_mismatch(p, parameters["av_mismatch_tolerance"]),
+                     "av_start_offset": av_start_offset(p, parameters["av_start_offset_tolerance"]),
                      "packet_timestamps": reports, "anomalies": anomalies, "anomaly_count": len(anomalies)})
         return data

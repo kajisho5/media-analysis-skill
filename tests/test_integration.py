@@ -143,6 +143,46 @@ def test_timing_and_duration(media, tmp_path):
     assert t["av_mismatch"]["within_tolerance"] is True and t["anomaly_count"] == 0
     assert t["packet_timestamps"]["1"]["negative_pts"] == 1      # AAC priming: reported as a fact, not an anomaly
     assert t["packet_timestamps"]["0"]["packet_count"] == 150 and t["packet_timestamps"]["0"]["median_interval"] == 0.04
+    assert t["av_start_offset"]["status"] == "performed" and t["av_start_offset"]["within_tolerance"] is True
+
+
+def test_av_start_offset(media, tmp_path):
+    """ADR-029: audio muxed 0.5 s after the first frame is reported as a +0.5 s start offset; no audio -> not_performed."""
+    e = engine(tmp_path)
+    off = run(e, media["av_offset"], "timing")["data"]["av_start_offset"]
+    assert off["status"] == "performed" and abs(off["offset"] - 0.5) < 0.002 and off["within_tolerance"] is False
+    assert off["video_start_time"] == 0.0 and off["tolerance"] == 0.045
+    assert run(e, media["av_offset"], "timing", av_start_offset_tolerance=0.6)["data"]["av_start_offset"]["within_tolerance"] is True
+    assert run(e, media["video_only"], "timing")["data"]["av_start_offset"]["status"] == "not_performed"
+
+
+def test_noise_floor_snr_rises_when_noise_drops(media, tmp_path):
+    """ADR-029 / voice-enhance-skill step 3: the same 'voice' with 20 dB less noise measures ~20 dB more SNR."""
+    e = engine(tmp_path)
+    noisy = run(e, media["noisy"], "noise_floor")
+    cleaned = run(e, media["cleaned"], "noise_floor")["data"]
+    assert noisy["source"] == f"media-analysis/noise@{VERSION}" and noisy["kind"] == "noise_floor"
+    n = noisy["data"]
+    assert n["window_count"] == 80 and n["window_samples"] == 2400 and n["sample_rate"] == 48000 and n["channel"] == -1
+    assert abs(n["noise_floor_dbfs"] - (-44.77)) < 0.5 and abs(n["signal_level_dbfs"] - (-9.03)) < 0.1
+    assert abs((cleaned["snr_db"] - n["snr_db"]) - 20.0) < 0.5 and abs(cleaned["signal_level_dbfs"] - n["signal_level_dbfs"]) < 0.05
+    assert n["percentiles_dbfs"]["p10"] == n["noise_floor_dbfs"] and n["percentiles_dbfs"]["p95"] == n["signal_level_dbfs"]
+
+
+def test_noise_floor_digital_silence_and_channels(media, tmp_path):
+    e = engine(tmp_path)
+    sil = run(e, media["silence"], "noise_floor")["data"]
+    assert sil["noise_floor_dbfs"] is None and sil["snr_db"] is None and sil["digital_silence_windows"] == sil["window_count"] > 0
+    assert set(sil["unmeasurable"]) == {"noise_floor_dbfs", "signal_level_dbfs", "snr_db"}
+    # one channel of a stereo stream: both channels carry the same tone, so channel 1 alone reads the same level
+    both = run(e, media["stereo"], "noise_floor")["data"]
+    right = run(e, media["stereo"], "noise_floor", channel=1)["data"]
+    assert right["channel"] == 1 and right["channels"] == 2 and abs(right["signal_level_dbfs"] - both["signal_level_dbfs"]) < 0.05
+    with pytest.raises(AnalysisError) as ei:
+        run(e, media["stereo"], "noise_floor", channel=2)
+    assert ei.value.code == "INVALID_INPUT"
+    # window length follows the stream's own sample rate (44.1 kHz)
+    assert run(e, media["mono"], "noise_floor", window=0.1)["data"]["window_samples"] == 4410
 
 
 def test_cache_hit_skips_analyzer(media, tmp_path):
@@ -371,7 +411,7 @@ def test_timeout_keeps_the_protocol(media, tmp_path):
 
 
 # ---- real media matrix: every kind on every fixture yields a contract-conformant ok or error result
-AUDIO_KINDS = {"audio_format", "silence", "loudness"}
+AUDIO_KINDS = {"audio_format", "silence", "loudness", "noise_floor"}
 VIDEO_KINDS = {"video_format", "scene_detection"}
 
 
