@@ -49,6 +49,15 @@ PARAMETER_SCHEMAS: Dict[str, Dict[str, Dict[str, Any]]] = {
     "timing": {
         "gap_factor": {"type": _NUM, "default": 2.5, "min": 1.1, "max": 100.0},
         "av_mismatch_tolerance": {"type": _NUM, "default": 0.1, "min": 0.0, "max": 60.0},
+        "av_start_offset_tolerance": {"type": _NUM, "default": 0.045, "min": 0.0, "max": 60.0},
+    },
+    # ADR-029: channel -1 pools every channel of the stream; 0..63 measures one channel
+    "noise_floor": {
+        "stream": {"type": _INT, "default": 0, "min": 0, "max": 63},
+        "channel": {"type": _INT, "default": -1, "min": -1, "max": 63},
+        "window": {"type": _NUM, "default": 0.05, "min": 0.01, "max": 1.0},
+        "noise_percentile": {"type": _NUM, "default": 10.0, "min": 0.0, "max": 50.0},
+        "signal_percentile": {"type": _NUM, "default": 95.0, "min": 50.0, "max": 100.0},
     },
 }
 
@@ -64,6 +73,7 @@ KIND_TO_TOOL: Dict[str, str] = {
     "integrity": "integrity",
     "scene_detection": "scenes",
     "timing": "timing",
+    "noise_floor": "noise",
 }
 ANALYSIS_KINDS = tuple(KIND_TO_TOOL)
 
@@ -76,7 +86,8 @@ TOOL_DESCRIPTIONS: Dict[str, str] = {
     "loudness": "EBU R128 integrated loudness, loudness range and true peak of one audio stream",
     "integrity": "Full decode with error counting, per-stream frame counts and timestamp monotonicity; PASS / WARN / FAIL",
     "scenes": "Deterministic visual scene-cut detection (scdet score), not semantic scene understanding",
-    "timing": "Duration and timing facts: start times, per-stream durations, A/V mismatch, timestamp discontinuities",
+    "timing": "Duration and timing facts: start times, per-stream durations, A/V duration mismatch and start offset, timestamp discontinuities",
+    "noise": "Noise floor, signal level and no-reference SNR estimate of one audio stream (or one channel) from short-window RMS",
 }
 
 TOOL_CAPABILITIES: Dict[str, List[str]] = {
@@ -89,6 +100,7 @@ TOOL_CAPABILITIES: Dict[str, List[str]] = {
     "integrity": ["ffprobe", "ffmpeg"],
     "scenes": ["ffprobe", "ffmpeg", "filter:scdet"],
     "timing": ["ffprobe"],
+    "noise": ["ffprobe", "ffmpeg", "filter:astats"],
 }
 
 
@@ -123,6 +135,9 @@ CAPABILITY_IDS: Dict[str, str] = {
     "video_format": "measure.video.probe",
     "audio_format": "measure.audio.probe",
     "duration": "measure.media.duration",
+    # ADR-029: no id in CAPABILITY_MATRIX.md yet; named like the other measure.audio.* ids, and not a collision:
+    # qc-skill measures peak / RMS / clipping, not a noise floor or SNR
+    "noise_floor": "measure.audio.noise_floor",
 }
 
 

@@ -2,8 +2,8 @@
 
 ```text
 pip install -e . pytest
-python -m pytest -q               # 111 tests: unit + contract + integration + evals
-python evals/run.py               # 9 measurement eval cases with expected values and tolerances
+python -m pytest -q               # 116 tests: unit + contract + integration + evals
+python evals/run.py               # 12 measurement eval cases with expected values and tolerances
 python evals/contract_evals.py    # 17 contract eval cases
 ```
 
@@ -27,12 +27,15 @@ Nothing binary is committed; fixtures are generated with ffmpeg into a temporary
 | `short.mp4` | 0.4 s (10 frames) | short video |
 | `scenes.mp4` | three 2 s hard-cut segments | scene cuts at 2.0 and 4.0 s |
 | `corrupt.mp4` | `av.mp4` with 3000 bytes zeroed inside `mdat` | integrity FAIL |
+| `noisy.wav` | 4 s mono 48 kHz: 440 Hz amplitude 0.5 for the first 0.5 s of every second (−9.03 dBFS RMS) + white noise amplitude 0.01 (−44.77 dBFS RMS) | noise_floor: floor −44.77, signal −9.03, SNR 35.7 dB |
+| `cleaned.wav` | `noisy.wav` with noise amplitude 0.001 (−64.77 dBFS) | noise_floor: SNR rises by 20 dB (voice-enhance step 3's acceptance shape) |
+| `av_offset.mkv` | 3 s H.264 + PCM audio muxed with `-itsoffset 0.5` | timing `av_start_offset` +0.500 s |
 
 ## Unit tests (`tests/test_unit.py`, no ffmpeg)
 
 contract ↔ registry agreement (no undeclared or unimplemented tools) · AnalysisRequest validation · command / argv
 rejection · kind validation · parameter validation (unknown, type, range, NaN) · probe / stream / video (CFR, VFR,
-unknown) / audio parsers · silence parser + classification · ebur128 parser (incl. `-inf`) · integrity status
+unknown) / audio parsers · silence parser + classification · ebur128 parser (incl. `-inf`) · noise window parser, nearest-rank percentile and summary (`-inf` windows → null) · A/V start offset from a probe · integrity status
 (PASS / WARN / FAIL) · scdet parser · malformed result · wrong asset / kind / analysis id / source · deterministic
 identity (parameter order, asset / version / parameter changes) · cache hit / miss / relabel / disabled · cache
 invalidation by asset, algorithm version, parameters · a package (patch) version bump keeps the cache, with the
@@ -45,7 +48,7 @@ secret leakage (env value, secret-looking key, child environment) · command / a
 ## Contract tests (`tests/test_contract.py`)
 
 schema validator · contract JSON self-consistency (sections, schema versions, error / exit tables, budget / cache
-vocab) · tools and kinds derived from the registry (`tool_spec(analyzer)` equality, coverage of all 10 kinds,
+vocab) · tools and kinds derived from the registry (`tool_spec(analyzer)` equality, coverage of all 11 kinds,
 capability names) · consumer rules from `tests/contract/agent_skill_package_contract.json` (video-production-agent
 SkillPackage / ToolSpec / Observation / capability-name rules) · request schema ↔ `AnalysisRequest` agreement (incl.
 `strategy` / `budget` / `cache_policy` rejection) · response / result / observation schema roundtrip through
@@ -65,12 +68,12 @@ stdin, unreadable) · no confidence / judgement vocabulary in analyzers · batch
 ## Integration tests (`tests/test_integration.py`, real ffmpeg)
 
 MP4 probe · video stream analysis (CFR, frame count, short file) · audio stream analysis (stereo / mono) · silence
-(leading / trailing, entirely silent, identity changes with threshold) · loudness (−23.0 / −20.0 LUFS, silent input) ·
+(leading / trailing, entirely silent, identity changes with threshold) · loudness (−23.0 / −20.0 LUFS, silent input) · noise floor / SNR (noisy vs cleaned: +20 dB SNR, digital silence → null, one channel, window from the sample rate) · A/V start offset (+0.5 s mux offset, tolerance, no audio → not_performed) ·
 integrity (PASS, FAIL on corruption, video-only, audio-only) · multiple streams (ordinals, per-stream video / audio /
 loudness, out-of-range ordinal) · no-audio video · scene detection · timing / duration · **cache hit skips the
 analyzer** (execution log: first run executed ffmpeg, second run executed nothing, a new engine reuses the disk cache)
 · cache policies (`bypass`, `only` → `CACHE_MISS`) · budget and timeout with real processes · **timeout leaves no
-ffmpeg process and no cache entry** (`/proc` scan on Linux) · determinism across runs · **all 10 kinds on real
+ffmpeg process and no cache entry** (`/proc` scan on Linux) · determinism across runs · **all 11 kinds on real
 multi-stream media, response validated against the published schemas, second batch entirely from cache** · CLI smoke
 (doctor, probe, analyze multi-kind, cache hit, dry-run JSON / text, error inside the JSON document vs stderr, partial
 batch with budget error, `run` with request file, argv rejection, `--allowed-input`, contract) · `run -` over stdin
@@ -79,7 +82,7 @@ unknown budget field · **invalid-input matrix** over stdin (invalid JSON, missi
 invalid / unknown parameter, path traversal, nonexistent file, non-media file, command field, executable override →
 one parseable error response each, stderr empty) · absolute vs relative input (one identity) and `--allowed-input` ·
 timeout inside a batch keeps the protocol (partial response, others served, no cache entry, no ffmpeg left) ·
-**real-media matrix**: all 10 kinds × 10 fixtures validated against the schemas, expected `UNSUPPORTED_FORMAT` for
+**real-media matrix**: all 11 kinds × 10 fixtures validated against the schemas, expected `UNSUPPORTED_FORMAT` for
 audio kinds on video-only and video kinds on audio-only media, second pass served from cache except the
 never-cached errors · determinism across two processes · **non-ASCII (Japanese) file name over cp1252 / cp932 / ascii pipes**: JSON
 protocol, human mode, stdin request and error documents all survive.

@@ -12,6 +12,10 @@ Every fixture has a known construction so expected values in tests and evals are
   short.mp4       0.4 s (10 frames @25 fps), 320x180 H.264 + mono AAC
   scenes.mp4      6 s, three 2 s hard-cut segments (testsrc2 / smptebars / solid blue), no audio
   corrupt.mp4     av.mp4 with 3000 bytes zeroed in the middle of the mdat (decoder errors)
+  noisy.wav       4 s, mono PCM 16-bit 48 kHz: 440 Hz sine amplitude 0.5 on for the first 0.5 s of every second (RMS -9.03 dBFS)
+                  + white noise (anoisesrc, uniform, amplitude 0.01, seed 1: RMS 0.01/sqrt(3) = -44.77 dBFS) throughout
+  cleaned.wav     noisy.wav with the noise amplitude at 0.001 (-64.77 dBFS): the same "voice", 20 dB less noise
+  av_offset.mkv   3 s, 320x180 @25 H.264 + mono PCM 48 kHz whose first sample is muxed 0.5 s after the first frame (-itsoffset 0.5)
 """
 from __future__ import annotations
 
@@ -24,6 +28,7 @@ FF = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-nostdin"]
 X264 = ["-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p"]
 TONE_GATED = "0.1*sin(2*PI*1000*t)*between(t\\,2\\,5)"
 TONE = "0.1*sin(2*PI*1000*t)"
+BURSTS = "0.5*sin(2*PI*440*t)*lt(mod(t\\,1)\\,0.5)"
 
 
 def available() -> bool:
@@ -39,7 +44,8 @@ def build_all(directory: Path) -> Dict[str, Path]:
     d.mkdir(parents=True, exist_ok=True)
     f: Dict[str, Path] = {k: d / v for k, v in {
         "av": "av.mp4", "video_only": "video_only.mp4", "stereo": "stereo.wav", "mono": "mono.wav", "silence": "silence.wav",
-        "multi": "multi.mp4", "loud": "loud.wav", "short": "short.mp4", "scenes": "scenes.mp4", "corrupt": "corrupt.mp4"}.items()}
+        "multi": "multi.mp4", "loud": "loud.wav", "short": "short.mp4", "scenes": "scenes.mp4", "corrupt": "corrupt.mp4",
+        "noisy": "noisy.wav", "cleaned": "cleaned.wav", "av_offset": "av_offset.mkv"}.items()}
     _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-f", "lavfi", "-i", f"aevalsrc='{TONE_GATED}':s=48000", "-t", "6",
           *X264, "-c:a", "aac", "-shortest", str(f["av"])])
     _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-t", "4", *X264, str(f["video_only"])])
@@ -56,6 +62,11 @@ def build_all(directory: Path) -> Dict[str, Path]:
     _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25:d=2", "-f", "lavfi", "-i", "smptebars=size=320x180:rate=25:d=2",
           "-f", "lavfi", "-i", "color=c=blue:size=320x180:rate=25:d=2", "-filter_complex", "[0:v][1:v][2:v]concat=n=3:v=1:a=0[v]",
           "-map", "[v]", *X264, str(f["scenes"])])
+    for key, noise_amp in (("noisy", "0.01"), ("cleaned", "0.001")):
+        _run(["-f", "lavfi", "-i", f"aevalsrc='{BURSTS}':s=48000", "-f", "lavfi", "-i", f"anoisesrc=r=48000:a={noise_amp}:c=white:seed=1",
+              "-filter_complex", "[0:a][1:a]amix=inputs=2:normalize=0", "-t", "4", "-c:a", "pcm_s16le", str(f[key])])
+    _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-itsoffset", "0.5", "-f", "lavfi", "-i", f"aevalsrc='{TONE}':s=48000",
+          "-t", "3", *X264, "-c:a", "pcm_s16le", str(f["av_offset"])])
     data = bytearray(f["av"].read_bytes())
     mid = len(data) // 2
     data[mid:mid + 3000] = b"\x00" * 3000

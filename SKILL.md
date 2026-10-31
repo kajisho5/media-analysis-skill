@@ -42,7 +42,8 @@ Engine options: `--timeout S`, `--max-analysis-calls N`, `--max-total-seconds S`
 | `loudness` | `stream` (0) |
 | `integrity` | `max_error_lines` (200) |
 | `scene_detection` | `stream` (0), `threshold` (10, scdet score 0-100), `min_scene_duration` (0.5 s) |
-| `timing` | `gap_factor` (2.5 × median interval), `av_mismatch_tolerance` (0.1 s) |
+| `timing` | `gap_factor` (2.5 × median interval), `av_mismatch_tolerance` (0.1 s), `av_start_offset_tolerance` (0.045 s) |
+| `noise_floor` | `stream` (0), `channel` (-1 = all channels, else one channel), `window` (0.05 s), `noise_percentile` (10), `signal_percentile` (95) |
 
 Unknown kinds, unknown parameters, out-of-range values and any `command` / `argv` field are rejected with `INVALID_INPUT`.
 

@@ -60,7 +60,7 @@ def test_tools_and_kinds_derive_from_implementation():
         assert t["produces_output"] is False and t["writes_media"] is False and t["deterministic"] is True and t["provenance"] == "OBSERVED"
         assert t["supports"] == {"timeout": True, "cache": True, "dry_run": True}
         assert set(t["parameters"]) == set(t["kinds"]) and all(t["parameters"][k] == PARAMETER_SCHEMAS[k] for k in t["kinds"])
-    assert c["analysis_kinds"] == list(ANALYSIS_KINDS) and len(c["analysis_kinds"]) == 10
+    assert c["analysis_kinds"] == list(ANALYSIS_KINDS) and len(c["analysis_kinds"]) == 11
     assert c["kind_to_tool"] == {k: f"{SKILL_ID}/{v}" for k, v in KIND_TO_TOOL.items()}
     covered = {k for t in c["tools"] for k in t["kinds"]}
     assert covered == set(ANALYSIS_KINDS)
@@ -302,7 +302,7 @@ def test_os_registry_provides_rules():
     c = skill_contract()
     assert c["skill_id"] and "skill_id" in OS_RULES["skill_identity"]["accepted_shapes"]
     provides = c["provides"]
-    assert [e["kind"] for e in provides] == sorted(ANALYSIS_KINDS) and len(provides) == 10
+    assert [e["kind"] for e in provides] == sorted(ANALYSIS_KINDS) and len(provides) == 11
     ids = [e["id"] for e in provides]
     assert len(set(ids)) == len(ids)
     tool_ids = {t["tool_id"] for t in c["tools"]}

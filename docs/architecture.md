@@ -51,7 +51,7 @@ lazily-run, shared ffprobe result. Analyzers never see `asset_id`, never write f
 
 Analyzers: `ProbeAnalyzer` (media_probe), `StreamAnalyzer` (stream_layout), `VideoAnalyzer` (video_format),
 `AudioAnalyzer` (audio_format), `SilenceAnalyzer`, `LoudnessAnalyzer`, `IntegrityAnalyzer`, `SceneAnalyzer`
-(scene_detection), `TimingAnalyzer` (duration, timing). The registry is a literal list; there is no plugin loader.
+(scene_detection), `TimingAnalyzer` (duration, timing), `NoiseAnalyzer` (noise_floor). The registry is a literal list; there is no plugin loader.
 
 ## Determinism
 

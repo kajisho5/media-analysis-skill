@@ -1,0 +1,11 @@
+{
+  "id": "12_av_start_offset",
+  "fixture": "av_offset",
+  "kind": "timing",
+  "derivation": "av_offset.mkv muxes its PCM audio with -itsoffset 0.5: Matroska stores the first audio packet at 0.5 s and the first video frame at 0 s (PCM has no encoder priming), so the audio starts 0.500 s late, outside the default 0.045 s tolerance",
+  "expect": [
+    {"path": "data.av_start_offset.status", "value": "performed"},
+    {"path": "data.av_start_offset.offset", "op": "approx", "value": 0.5, "tolerance": 0.002},
+    {"path": "data.av_start_offset.within_tolerance", "value": false}
+  ]
+}
