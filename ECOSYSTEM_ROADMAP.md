@@ -24,7 +24,7 @@ Version single-sourced from `pyproject.toml` (#17): `contract --json` → `versi
 - [x] **1. Single-source the version** — coordinated with the agent's version gate — [#17](https://github.com/kajisho5/media-analysis-skill/pull/17)
   - Done when: contract version == tag
 - [x] **2. Refresh STATE.md** — [#18](https://github.com/kajisho5/media-analysis-skill/pull/18)
-- [x] **3. Measurements new skills need for acceptance** — noise floor / SNR (voice-enhance), A/V offset -- only if not qc-skill's — new kind `noise_floor` (`measure.audio.noise_floor`) and `timing.av_start_offset`; selection, sources and what stays open (reverberation, sharpness / exposure) in ADR-029 — (PR_LINK)
+- [x] **3. Measurements new skills need for acceptance** — noise floor / SNR (voice-enhance), A/V offset -- only if not qc-skill's — new kind `noise_floor` (`measure.audio.noise_floor`) and `timing.av_start_offset`; selection, sources and what stays open (reverberation, sharpness / exposure) in ADR-029 — [#21](https://github.com/kajisho5/media-analysis-skill/pull/21)
   - Done when: evals
 
 ---
