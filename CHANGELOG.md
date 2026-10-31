@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.7 - 2026-10-31
+
+- Acceptance measurements: noise_floor (SNR estimate) and timing.av_start_offset (roadmap step 3) (#21) (c61c223)
+
 ## v0.1.6 - 2026-10-30
 
 - ci: stop inferring major from PR titles; pin third-party actions by SHA (#20) (1c81b40)
