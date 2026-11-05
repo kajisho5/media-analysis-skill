@@ -28,6 +28,12 @@ The agent pins this contract at 0.1.7 (video-production-agent#93, ADR-078), `noi
   - Done when: evals
 - [ ] **4. Speech regions (VAD)** — new kind `speech_regions` (`measure.audio.speech_regions`): where someone speaks, as time ranges with a probability, the speech share and the longest pause, measured by silero-vad (MIT code and weights, ONNX on CPU) as the optional extra `vad`; without it the kind is `UNKNOWN`, never guessed from silence. Different from ffmpeg-skill `silence` / `scenes --speech` (level and spectrum, not a speech model); the ADR compares the three on the same fixtures. Consumers: the agent's edit view (video-production-agent step 14), cut boundaries that must not land mid-word, dubbing gaps
   - Done when: ADR; on speech over music and over noise, speech-region F1 above 0.9 against hand labels; offline, nothing downloaded at run time
+- [ ] **5. Highlight signals for clips** — new kinds measured, never judged: applause and laughter spans (an audio classifier, engine and weights licence checked in an ADR; YAMNet, Apache-2.0, is a candidate), speech-energy peaks, speaking-rate changes, and screen-change bursts, each as time ranges with a score. Field review 2026-11-05 (Velisa ROADMAP, third round)
+  - なぜ要るか：講演や配信のアーカイブから、Shorts に切り出す候補を素早く挙げられる
+  - Done when: ADR; a fixture with applause and a laugh gives both spans within 0.5 s
+- [ ] **6. Incremental measurement on growing files** — a measurement run on a file still being written measures only the new part since the last run and appends to the cached result
+  - なぜ要るか：収録中の長尺ファイルでも、計測を最初からやり直さずに追いかけられる
+  - Done when: a fixture appended twice gives the same result as one run on the final file
 
 ---
 Engine for every media operation: [ffmpeg-skill](https://github.com/kajisho5/ffmpeg-skill) (3.x, 42 tools, contract_version 2.0; treated as complete, proposals go to Velisa's ROADMAP). Orchestrator: [video-production-agent](https://github.com/kajisho5/video-production-agent).
