@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.8 - 2026-11-05
+
+- docs(roadmap): step 4 (speech regions with silero-vad) and review (#22) (1929020)
+
 ## v0.1.7 - 2026-10-31
 
 - Acceptance measurements: noise_floor (SNR estimate) and timing.av_start_offset (roadmap step 3) (#21) (c61c223)
