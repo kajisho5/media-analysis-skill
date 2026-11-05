@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.9 - 2026-11-05
+
+- docs(roadmap): field review steps 5-6 (2026-11-05) (#23) (04b369f)
+
 ## v0.1.8 - 2026-11-05
 
 - docs(roadmap): step 4 (speech regions with silero-vad) and review (#22) (1929020)
