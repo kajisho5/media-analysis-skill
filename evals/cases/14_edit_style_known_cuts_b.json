@@ -1,0 +1,19 @@
+{
+  "id": "14_edit_style_known_cuts_b",
+  "fixture": "style_b",
+  "kind": "edit_style",
+  "derivation": "style_b.mkv: shots of 10, 10, 20, 30, 30, 40, 40 frames at 25 fps (180 frames, 7.2 s): 6 cuts, median 30 frames (1.2 s), 6 / 7.2 s * 60 = 50 cuts per minute; an SRT stream of four 1 s events (4 / 7.2 s * 60 = 33.33 per minute, 4 s of 7.2 s covered), the last with {\\an8} (top); a 1 kHz tone of amplitude 0.2 (-17.0 LUFS) for t < 4 s, then 3.2 s of silence (ADR-030)",
+  "expect": [
+    {"path": "data.video.frame_count", "value": 180},
+    {"path": "data.video.cut_count", "value": 6},
+    {"path": "data.video.shot_frames.median", "op": "approx", "value": 30, "tolerance": 1},
+    {"path": "data.video.cuts_per_minute", "op": "approx", "value": 50.0, "tolerance": 0.05},
+    {"path": "data.subtitles.present", "value": true},
+    {"path": "data.subtitles.events_per_minute", "op": "approx", "value": 33.33, "tolerance": 0.05},
+    {"path": "data.subtitles.coverage_share", "op": "approx", "value": 0.556, "tolerance": 0.01},
+    {"path": "data.subtitles.dominant_position", "value": "bottom"},
+    {"path": "data.subtitles.streams.0.positions.top", "value": 1},
+    {"path": "data.audio.integrated_lufs", "op": "approx", "value": -17.0, "tolerance": 0.5},
+    {"path": "data.audio.longest_silence", "op": "approx", "value": 3.2, "tolerance": 0.1}
+  ]
+}

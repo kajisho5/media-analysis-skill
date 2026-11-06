@@ -1,0 +1,16 @@
+{
+  "id": "13_edit_style_known_cuts_a",
+  "fixture": "style_a",
+  "kind": "edit_style",
+  "derivation": "style_a.mp4: solid-colour shots of 12, 25, 37, 50, 62 frames at 25 fps (186 frames, 7.44 s) joined by hard cuts, so 4 cuts, median shot 37 frames (1.48 s), 4 / 7.44 s * 60 = 32.26 cuts per minute; a continuous 1 kHz tone of amplitude 0.1 is -23.0 LUFS with no silence; no subtitle stream (ADR-030)",
+  "expect": [
+    {"path": "data.video.frame_count", "value": 186},
+    {"path": "data.video.cut_count", "value": 4},
+    {"path": "data.video.shot_frames.median", "op": "approx", "value": 37, "tolerance": 1},
+    {"path": "data.video.shot_seconds.median", "op": "approx", "value": 1.48, "tolerance": 0.04},
+    {"path": "data.video.cuts_per_minute", "op": "approx", "value": 32.26, "tolerance": 0.05},
+    {"path": "data.subtitles.present", "value": false},
+    {"path": "data.audio.integrated_lufs", "op": "approx", "value": -23.0, "tolerance": 0.3},
+    {"path": "data.audio.silence_share", "value": 0.0}
+  ]
+}

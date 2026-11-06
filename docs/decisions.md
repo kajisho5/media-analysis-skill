@@ -287,3 +287,40 @@
   AI-video-production-OS `CAPABILITY_MATRIX.md` yet, and not a collision (qc-skill publishes no noise measurement).
   video-production-agent pins this contract (`tools/media_analysis/contract_*.json`) and needs a re-pin to see the
   new tool.
+
+## ADR-030 An editing-style profile (`edit_style`) and a profile diff
+- Context: roadmap step 7. An editor matching a reference edit (a channel's house style, a client's sample) needs the
+  reference's pacing, subtitle habits and audio level as numbers, and the same numbers for their own cut, so the gap
+  is stated per item rather than by eye. Every input to that already exists as a filter this Skill runs (`scdet`,
+  `ebur128`, `silencedetect`) or as a stream ffmpeg can read (text subtitles); what is missing is one profile that
+  puts them on one time base, in frames, and a comparison of two profiles.
+- Decision: new kind `edit_style` (tool `media-analysis/style`, Capability `measure.video.edit_style`), one file per
+  request like every other kind.
+  - Shots are measured in frames: the cut is the frame index scdet flags (`frame:N` of `metadata=print`), the last
+    shot ends at the number of frames scdet saw, so a shot length is a difference of integers and hard cuts are exact
+    to the frame. Seconds are frames / fps. `min_shot_duration` (default 0.25 s, rounded to frames) drops a cut that
+    follows the previous kept cut too closely (a flash or a dissolve flagged on consecutive frames). Distribution:
+    median (average of the two middle shots), nearest-rank p10 / p25 / p75 / p90, min / max / mean, and a histogram
+    on fixed edges (0, 0.5, 1, 2, 4, 8, 16 s) so two profiles always share buckets.
+  - Subtitles: each text subtitle stream is converted by ffmpeg to ASS on stdout (`-c:s ass -f ass -`, the one place
+    this Skill reads a non-null output, still a pipe, never a file); events give count, events per minute, the share
+    of the running time covered (overlaps merged) and the vertical band of each event from the style `Alignment`,
+    `\an` / `\a` overrides and `\pos` / `\move` against `PlayResY`. This measures subtitle events that exist; it does
+    not make or edit subtitles (still out of scope).
+  - Audio: integrated loudness, loudness range and true peak (EBU R128) and the silence share / longest silence, from
+    one ffmpeg pass (`ebur128,silencedetect`).
+  - A missing stream is `status: not_performed` inside the profile, not an error, so an audio-only or video-only edit
+    still has a profile and the diff reports the missing side as `unavailable`.
+  - `media-analysis style profile <input> --out <file>` saves the Observation (profile + provenance; the file must be
+    inside the workspace, the same write rule as the cache). `media-analysis style diff <reference> <candidate>`
+    returns, per metric, candidate − reference and the relative difference, and equality for fps / subtitle presence /
+    dominant position. The diff never says which edit is better or what to change: the caller's rule does.
+- Not measured, and listed in every profile's `unmeasured`: burned-in (open) subtitles, which need text detection in
+  the picture, and whether a music bed runs under speech, which needs an audio classifier. Both would be model
+  outputs with a confidence, not filter measurements (CLAUDE.md invariant); `audio.active_share` is reported instead.
+  Not chosen: averaging scdet's `time` values into seconds-based shot lengths — floating timestamps of VFR or
+  edit-listed files round differently, while frame counts are what an editor counts.
+- Versions: `style` starts at `algorithm_version` "1"; other analyzers unchanged. Contract `@1` additive: one tool,
+  one kind, one `provides` entry, six parameters; `capability_names` unchanged (the three filters were already
+  required). video-production-agent's adapter accepts extra tools; it sees `edit_style` after a re-pin of its
+  contract snapshot.

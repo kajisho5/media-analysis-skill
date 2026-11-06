@@ -185,6 +185,59 @@ def test_noise_floor_digital_silence_and_channels(media, tmp_path):
     assert run(e, media["mono"], "noise_floor", window=0.1)["data"]["window_samples"] == 4410
 
 
+STYLE_A_SHOTS = [12, 25, 37, 50, 62]          # tests/fixtures/generate.py: frames per shot @25 fps
+STYLE_B_SHOTS = [10, 10, 20, 30, 30, 40, 40]
+
+
+def _median(xs):
+    s = sorted(xs)
+    return float(s[len(s) // 2]) if len(s) % 2 else (s[len(s) // 2 - 1] + s[len(s) // 2]) / 2.0
+
+
+def test_edit_style_known_cuts_and_diff(media, tmp_path):
+    """ADR-030 / roadmap step 7: on two fixtures with known cut intervals the median shot length matches the
+    construction within one frame, and the diff reports the true differences."""
+    from media_analysis.analyzers.style import diff_profiles
+    e = engine(tmp_path)
+    a = run(e, media["style_a"], "edit_style")
+    b = run(e, media["style_b"], "edit_style")
+    assert a["source"] == f"media-analysis/style@{VERSION}" and a["kind"] == "edit_style"
+    va, vb = a["data"]["video"], b["data"]["video"]
+    assert abs(va["shot_frames"]["median"] - _median(STYLE_A_SHOTS)) <= 1 and abs(vb["shot_frames"]["median"] - _median(STYLE_B_SHOTS)) <= 1
+    assert [s["frames"] for s in va["shots"]] == STYLE_A_SHOTS and [s["frames"] for s in vb["shots"]] == STYLE_B_SHOTS
+    assert va["frame_count"] == 186 and va["cut_count"] == 4 and abs(va["cuts_per_minute"] - 4 / 7.44 * 60) < 0.01
+    sb, ab = b["data"]["subtitles"], b["data"]["audio"]
+    assert a["data"]["subtitles"]["present"] is False and sb["present"] is True and sb["streams"][0]["events"] == 4
+    assert sb["streams"][0]["positions"] == {"bottom": 3, "middle": 0, "top": 1} and sb["dominant_position"] == "bottom"
+    assert abs(sb["events_per_minute"] - 4 / 7.2 * 60) < 0.01 and abs(sb["coverage_share"] - 4 / 7.2) < 0.01
+    assert abs(a["data"]["audio"]["integrated_lufs"] - (-23.0)) < 0.3 and abs(ab["integrated_lufs"] - (-17.0)) < 0.5
+    assert a["data"]["audio"]["silence_share"] == 0.0 and abs(ab["longest_silence"] - 3.2) < 0.1
+    assert {u["item"] for u in a["data"]["unmeasured"]} == {"subtitles.burned_in", "audio.music_bed"}
+    d = {i["metric"]: i for i in diff_profiles(a, b)["items"]}
+    assert abs(d["video.shot_frames.median"]["difference"] - (_median(STYLE_B_SHOTS) - _median(STYLE_A_SHOTS))) <= 1
+    assert d["video.shot_count"]["difference"] == 2 and d["video.cut_count"]["difference"] == 2
+    assert abs(d["video.cuts_per_minute"]["difference"] - (6 / 7.2 * 60 - 4 / 7.44 * 60)) < 0.01
+    assert d["subtitles.present"]["equal"] is False and d["subtitles.events_per_minute"]["status"] == "unavailable"
+    assert abs(d["audio.integrated_lufs"]["difference"] - 6.0) < 0.6 and d["video.fps"]["equal"] is True
+    # a stream that does not exist is reported, not raised; an audio-only file has no video part
+    assert run(e, media["style_a"], "edit_style", audio_stream=3)["data"]["audio"]["status"] == "not_performed"
+    assert run(e, media["mono"], "edit_style")["data"]["video"]["status"] == "not_performed"
+
+
+def test_edit_style_cli_profile_and_diff(media, tmp_path):
+    r = cli("style", "profile", str(media["style_a"]), "--out", "profiles/a.json", "--json", cwd=tmp_path)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout)["observations"][0]["kind"] == "edit_style" and (tmp_path / "profiles" / "a.json").is_file()
+    assert cli("style", "profile", str(media["style_b"]), "--out", "b.json", "--json", cwd=tmp_path).returncode == 0
+    r = cli("style", "diff", "profiles/a.json", "b.json", "--json", cwd=tmp_path)
+    doc = json.loads(r.stdout)
+    assert r.returncode == 0 and doc["schema"] == "media-analysis/edit-style-diff@1" and "video.shot_frames.median" in doc["different"]
+    outside = cli("style", "profile", str(media["style_a"]), "--out", str(tmp_path.parent / "escape.json"), "--json", cwd=tmp_path)
+    assert outside.returncode != 0 and json.loads(outside.stdout)["error"]["code"] == "PATH_NOT_ALLOWED"
+    bad = cli("style", "diff", "profiles/a.json", "missing.json", "--json", cwd=tmp_path)
+    assert bad.returncode != 0 and json.loads(bad.stdout)["error"]["code"] == "FILE_NOT_FOUND"
+
+
 def test_cache_hit_skips_analyzer(media, tmp_path):
     e = engine(tmp_path, cache=True)
     first = e.analyze({"asset_id": "asset-1", "input": str(media["av"]), "kind": "loudness"})

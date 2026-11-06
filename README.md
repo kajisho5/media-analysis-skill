@@ -159,6 +159,7 @@ observation; `status` of the response is `ok`, `partial` or `error`. Full refere
 | `scene_detection` | `media-analysis/scenes` | ffmpeg `scdet` | visual cuts with score; intervals between them. Not semantic scenes |
 | `timing` | `media-analysis/timing` | ffprobe | per-stream packet timestamps, gaps, A/V duration mismatch, A/V start offset |
 | `noise_floor` | `media-analysis/noise` | ffmpeg `astats` | short-window RMS → noise floor (p10), signal level (p95), no-reference SNR estimate; one channel or all |
+| `edit_style` | `media-analysis/style` | ffmpeg `scdet`, `ebur128`, `silencedetect` | editing-style profile: cuts per minute, shot-length distribution (frames and seconds), soft-subtitle frequency / coverage / position, loudness, silence share; `media-analysis style diff` compares two profiles |
 
 ## How video-production-agent consumes media-analysis-skill
 

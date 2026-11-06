@@ -16,6 +16,11 @@ Every fixture has a known construction so expected values in tests and evals are
                   + white noise (anoisesrc, uniform, amplitude 0.01, seed 1: RMS 0.01/sqrt(3) = -44.77 dBFS) throughout
   cleaned.wav     noisy.wav with the noise amplitude at 0.001 (-64.77 dBFS): the same "voice", 20 dB less noise
   av_offset.mkv   3 s, 320x180 @25 H.264 + mono PCM 48 kHz whose first sample is muxed 0.5 s after the first frame (-itsoffset 0.5)
+  style_a.mp4     edit with known cuts: solid-colour shots of 12, 25, 37, 50, 62 frames @25 fps (186 frames; median 37),
+                  1 kHz tone amplitude 0.1 (-23.0 LUFS) for the whole 7.44 s; no subtitles
+  style_b.mkv     edit with known cuts: shots of 10, 10, 20, 30, 30, 40, 40 frames @25 fps (180 frames; median 30),
+                  1 kHz tone amplitude 0.2 (-17.0 LUFS) only for t < 4 s (3.2 s trailing silence), and an SRT stream of
+                  4 events of 1 s each, the last one positioned at the top with {\an8}
 """
 from __future__ import annotations
 
@@ -28,6 +33,11 @@ FF = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-nostdin"]
 X264 = ["-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p"]
 TONE_GATED = "0.1*sin(2*PI*1000*t)*between(t\\,2\\,5)"
 TONE = "0.1*sin(2*PI*1000*t)"
+STYLE_A_SHOTS = (12, 25, 37, 50, 62)
+STYLE_B_SHOTS = (10, 10, 20, 30, 30, 40, 40)
+STYLE_COLOURS = ("red", "lime", "blue", "white", "black", "yellow", "magenta")
+STYLE_B_SRT = ("1\n00:00:00,500 --> 00:00:01,500\nFirst line.\n\n2\n00:00:02,000 --> 00:00:03,000\nSecond line.\n\n"
+               "3\n00:00:04,000 --> 00:00:05,000\nThird line.\n\n4\n00:00:06,000 --> 00:00:07,000\n{\\an8}Top line.\n\n")
 BURSTS = "0.5*sin(2*PI*440*t)*lt(mod(t\\,1)\\,0.5)"
 
 
@@ -39,13 +49,24 @@ def _run(args):
     subprocess.run(FF + args, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
 
+def _shots_video(shots):
+    """Hard cuts between solid colours, each shot exactly the given number of frames at 25 fps."""
+    inputs, chains = [], []
+    for i, frames in enumerate(shots):
+        inputs += ["-f", "lavfi", "-i", f"color=c={STYLE_COLOURS[i % len(STYLE_COLOURS)]}:size=320x180:rate=25"]
+        chains.append(f"[{i}:v]trim=end_frame={frames},setpts=PTS-STARTPTS[v{i}]")
+    concat = "".join(f"[v{i}]" for i in range(len(shots))) + f"concat=n={len(shots)}:v=1:a=0[v]"
+    return inputs, ";".join(chains) + ";" + concat
+
+
 def build_all(directory: Path) -> Dict[str, Path]:
     d = Path(directory)
     d.mkdir(parents=True, exist_ok=True)
     f: Dict[str, Path] = {k: d / v for k, v in {
         "av": "av.mp4", "video_only": "video_only.mp4", "stereo": "stereo.wav", "mono": "mono.wav", "silence": "silence.wav",
         "multi": "multi.mp4", "loud": "loud.wav", "short": "short.mp4", "scenes": "scenes.mp4", "corrupt": "corrupt.mp4",
-        "noisy": "noisy.wav", "cleaned": "cleaned.wav", "av_offset": "av_offset.mkv"}.items()}
+        "noisy": "noisy.wav", "cleaned": "cleaned.wav", "av_offset": "av_offset.mkv",
+        "style_a": "style_a.mp4", "style_b": "style_b.mkv"}.items()}
     _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-f", "lavfi", "-i", f"aevalsrc='{TONE_GATED}':s=48000", "-t", "6",
           *X264, "-c:a", "aac", "-shortest", str(f["av"])])
     _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-t", "4", *X264, str(f["video_only"])])
@@ -67,6 +88,15 @@ def build_all(directory: Path) -> Dict[str, Path]:
               "-filter_complex", "[0:a][1:a]amix=inputs=2:normalize=0", "-t", "4", "-c:a", "pcm_s16le", str(f[key])])
     _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-itsoffset", "0.5", "-f", "lavfi", "-i", f"aevalsrc='{TONE}':s=48000",
           "-t", "3", *X264, "-c:a", "pcm_s16le", str(f["av_offset"])])
+    inputs, graph = _shots_video(STYLE_A_SHOTS)
+    _run([*inputs, "-f", "lavfi", "-i", f"aevalsrc='{TONE}':s=48000", "-filter_complex", graph, "-map", "[v]",
+          "-map", f"{len(STYLE_A_SHOTS)}:a", "-t", "7.44", *X264, "-c:a", "aac", str(f["style_a"])])
+    srt = d / "style_b.srt"
+    srt.write_text(STYLE_B_SRT, encoding="utf-8")
+    inputs, graph = _shots_video(STYLE_B_SHOTS)
+    n = len(STYLE_B_SHOTS)
+    _run([*inputs, "-f", "lavfi", "-i", "aevalsrc='0.2*sin(2*PI*1000*t)*lt(t\\,4)':s=48000", "-i", str(srt), "-filter_complex", graph,
+          "-map", "[v]", "-map", f"{n}:a", "-map", f"{n + 1}:s", "-t", "7.2", *X264, "-c:a", "pcm_s16le", "-c:s", "srt", str(f["style_b"])])
     data = bytearray(f["av"].read_bytes())
     mid = len(data) // 2
     data[mid:mid + 3000] = b"\x00" * 3000

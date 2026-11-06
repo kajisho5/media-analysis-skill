@@ -635,3 +635,54 @@ def test_timestamp_report():
     assert rep["packet_count"] == 4 and rep["missing_pts"] == 1 and rep["non_monotonic_dts"] == 0 and rep["keyframes"] == 1
     rep2 = timestamp_report(parse_packets("0|0|0.1|0.04|K__\n0|0.04|0.05|0.04|___"), 2.5)
     assert rep2["non_monotonic_dts"] == 1
+
+
+# ---- edit_style helpers (ADR-030)
+def test_edit_style_shots_and_distribution():
+    from media_analysis.analyzers.style import distribution, shots_from_cuts, video_profile
+    shots = shots_from_cuts([12, 13, 37, 74, 124, 186, 0], 186, 25.0, min_shot_frames=2)
+    assert [s["frames"] for s in shots] == [12, 25, 37, 50, 62]          # 13 is 1 frame after 12: dropped; 0 / 186 are not cuts
+    assert shots[0]["start"] == 0.0 and shots[-1]["end"] == 7.44 and shots[1]["seconds"] == 1.0
+    assert distribution([10, 10, 20, 30, 30, 40, 40])["median"] == 30.0 and distribution([1, 2, 3, 4])["median"] == 2.5
+    assert distribution([1, 2, 3, 4])["p10"] == 1.0 and distribution([]) is None
+    v = video_profile([12, 37, 74, 124], 186, 25.0, 0.25)
+    assert v["cut_count"] == 4 and v["shot_count"] == 5 and v["shot_frames"]["median"] == 37.0 and v["min_shot_frames"] == 6
+    assert sum(b["count"] for b in v["shot_length_histogram"]) == 5 and v["shot_length_histogram"][-1]["to_seconds"] is None
+
+
+def test_edit_style_ass_positions():
+    from media_analysis.analyzers.style import parse_ass_events, subtitle_stream_profile
+    doc = "\n".join([
+        "[Script Info]", "PlayResY: 288", "", "[V4+ Styles]",
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+        "Style: Default,Arial,16,&Hffffff,&Hffffff,&H0,&H0,0,0,0,0,100,100,0,0,1,1,0,2,10,10,10,1",
+        "Style: Sign,Arial,16,&Hffffff,&Hffffff,&H0,&H0,0,0,0,0,100,100,0,0,1,1,0,8,10,10,10,1",
+        "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+        "Dialogue: 0,0:00:00.50,0:00:01.50,Default,,0,0,0,,Hello, world.",
+        "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\an8}Top",
+        "Dialogue: 0,0:00:03.00,0:00:04.00,Sign,,0,0,0,,Style says top",
+        "Dialogue: 0,0:00:05.00,0:00:06.00,Default,,0,0,0,,{\\pos(192,144)}Middle by position",
+        "Dialogue: 0,0:00:07.00,0:00:07.00,Default,,0,0,0,,zero length is not an event",
+    ])
+    ev = parse_ass_events(doc)
+    assert [e["position"] for e in ev] == ["bottom", "top", "top", "middle"] and ev[0]["start"] == 0.5 and ev[0]["end"] == 1.5
+    prof = subtitle_stream_profile(ev, 60.0)
+    assert prof["events"] == 4 and prof["events_per_minute"] == 4.0 and prof["positions"] == {"bottom": 1, "middle": 1, "top": 2}
+    assert prof["dominant_position"] == "top" and abs(prof["coverage_share"] - 3.5 / 60) < 1e-6    # 0.5-2.0 overlaps -> 1.5 s
+
+
+def test_edit_style_diff():
+    from media_analysis.analyzers.style import PROFILE_SCHEMA, diff_profiles
+    ref = {"profile_schema": PROFILE_SCHEMA, "video": {"fps": 25.0, "cut_count": 4, "shot_frames": {"median": 37.0}},
+           "subtitles": {"present": False}, "audio": {"integrated_lufs": -23.0}}
+    cand = {"profile_schema": PROFILE_SCHEMA, "video": {"fps": 25.0, "cut_count": 6, "shot_frames": {"median": 30.0}},
+            "subtitles": {"present": True}, "audio": {"integrated_lufs": None}}
+    d = diff_profiles({"observations": [{"kind": "edit_style", "data": ref}]}, {"data": cand})
+    items = {i["metric"]: i for i in d["items"]}
+    assert items["video.shot_frames.median"]["difference"] == -7.0 and items["video.cut_count"]["difference"] == 2
+    assert items["audio.integrated_lufs"]["status"] == "unavailable" and items["audio.integrated_lufs"]["missing_in"] == ["candidate"]
+    assert items["video.fps"]["equal"] is True and items["subtitles.present"]["equal"] is False
+    assert set(d["different"]) == {"video.shot_frames.median", "video.cut_count", "subtitles.present"}
+    with pytest.raises(AnalysisError) as ei:
+        diff_profiles({"video": {}}, cand)
+    assert ei.value.code == "INVALID_INPUT"

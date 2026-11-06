@@ -5,7 +5,7 @@ Written from a read-only audit of this repository on 2026-10-30. Each step below
 
 ## Where it stands
 
-Version single-sourced from `pyproject.toml` (#17): `contract --json` → `version` equals the newest tag (0.1.7 at `v0.1.7`, checked 2026-11-05). Cache keyed by per-analyzer algorithm version, so releases no longer empty it (ADR-028). 11 measurement kinds (step 3 added `noise_floor`). 85 test functions (116 collected), CI on 3 OSes. STATE.md current (#18).
+Version single-sourced from `pyproject.toml` (#17): `contract --json` → `version` equals the newest tag (0.1.7 at `v0.1.7`, checked 2026-11-05). Cache keyed by per-analyzer algorithm version, so releases no longer empty it (ADR-028). 12 measurement kinds (step 3 added `noise_floor`, step 7 `edit_style`). 90 test functions (121 collected), CI on 3 OSes. STATE.md current (#18).
 
 ## What this repository owns
 
@@ -34,6 +34,15 @@ The agent pins this contract at 0.1.7 (video-production-agent#93, ADR-078), `noi
 - [ ] **6. Incremental measurement on growing files** — a measurement run on a file still being written measures only the new part since the last run and appends to the cached result
   - なぜ要るか：収録中の長尺ファイルでも、計測を最初からやり直さずに追いかけられる
   - Done when: a fixture appended twice gives the same result as one run on the final file
+- [x] **7. Editing-style profile and comparison** — measure a reference edit's style — cut rate, shot-length distribution, whether subtitles are present, where they sit and how often they appear, loudness (LUFS), music bed — into a style profile (JSON), measure another edit with the same metrics and report the difference item by item. Done (ADR-030): new kind `edit_style` (`measure.video.edit_style`), shot lengths in frames from scdet, soft-subtitle events / coverage / position, EBU R128 loudness and silence share; `media-analysis style profile --out` saves a profile, `style diff` compares two. Not measured, listed in every profile's `unmeasured`: burned-in subtitles and music-bed presence (both need a model, not a filter)
+  - なぜ要るか：お手本の編集テンポや字幕・音量の癖を数値で掴み、自分の編集とのずれを項目ごとに確かめられる
+  - Done when: on two synthetic fixtures with known cut intervals, the median shot length matches the true value within ±1 frame, and the diff report shows the correct differences
+- [ ] **8. B-roll library index** — scan a folder of the user's own footage, give each clip metadata (duration, resolution, representative frame, shot / scene type) and tags, keep an index, search it by keyword and condition. Tags come from this Skill's own measurements; tags from an AI model are passed in by the caller (the Skill holds no model). A re-scan analyses only files that changed
+  - なぜ要るか：手持ちの素材から使えるカットを、毎回見返さずに条件で探せる
+  - Done when: indexing a fixture folder then searching returns the expected clips, and a second scan does not re-analyse unchanged files
+- [ ] **9. Highlight candidates from long recordings** — from a long video (a talk, a lecture), list self-contained spans as candidates with reasons, using loudness peaks, applause, laughter (spans from step 5 once it lands, or passed in by the caller), speaker changes and transcript keywords, with each start / end on a sentence boundary. Lists candidates only; cutting stays with the editing tools
+  - なぜ要るか：長い講演から、単独で成り立つ見せ場を理由付きで素早く拾える
+  - Done when: on a fixture, the span marked as the highlight is among the top candidates, and every candidate's boundaries fall on sentence boundaries
 
 ---
 Engine for every media operation: [ffmpeg-skill](https://github.com/kajisho5/ffmpeg-skill) (3.x, 42 tools, contract_version 2.0; treated as complete, proposals go to Velisa's ROADMAP). Orchestrator: [video-production-agent](https://github.com/kajisho5/video-production-agent).
