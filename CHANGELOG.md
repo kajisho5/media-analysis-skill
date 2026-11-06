@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.13 - 2026-11-06
+
+- Burned-in subtitle measurement in edit_style (roadmap step 10) (#27) (2ed30f2)
+
 ## v0.1.12 - 2026-11-06
 
 - Highlight candidates from long recordings (roadmap step 9) (#26) (ea55c74)
