@@ -49,6 +49,11 @@ Engine options: `--timeout S`, `--max-analysis-calls N`, `--max-total-seconds S`
 `media-analysis style profile <input> --out profile.json` saves an `edit_style` Observation; `media-analysis style diff
 <reference.json> <candidate.json> --json` prints the metric-by-metric difference (candidate − reference, ADR-030).
 
+`media-analysis library index <folder> --index library.json [--tags tags.json] --json` indexes a folder of clips
+(re-scans measure only new or changed files); `media-analysis library search --index library.json --query beach
+--orientation portrait --max-duration 10 --json` searches it. `--tags` takes `{"<relative path>": ["tag", ...]}` from
+the caller (this Skill holds no model); ADR-031.
+
 Unknown kinds, unknown parameters, out-of-range values and any `command` / `argv` field are rejected with `INVALID_INPUT`.
 
 ## AnalysisRequest (structured input)

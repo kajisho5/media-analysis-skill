@@ -241,6 +241,74 @@ def test_edit_style_cli_profile_and_diff(media, tmp_path):
     assert bad.returncode != 0 and json.loads(bad.stdout)["error"]["code"] == "FILE_NOT_FOUND"
 
 
+def _library_folder(media, root):
+    import shutil
+    (root / "city").mkdir(parents=True)
+    for name, dest in (("av", "beach_sunset.mp4"), ("video_only", "city/night_street.mp4"), ("scenes", "montage.mp4"),
+                       ("mono", "room_tone.wav"), ("portrait", "phone_clip.mp4")):
+        shutil.copy2(str(media[name]), str(root / dest))
+    (root / "notes.txt").write_text("not media", encoding="utf-8")
+    return root
+
+
+def test_library_index_search_and_incremental_rescan(media, tmp_path):
+    """ADR-031 / roadmap step 8: index a folder, search returns the expected clips, a re-scan re-analyses only what
+    changed (counted from the engine's execution log, not from the report alone)."""
+    import shutil
+    from media_analysis.library import build_index, search
+    lib = _library_folder(media, tmp_path / "lib")
+    policy = PathPolicy(workspace=str(tmp_path), allowed_input_roots=[str(lib)])
+    e = AnalysisEngine(policy=policy)
+    first = build_index(e, str(lib), None, {"beach_sunset.mp4": {"tags": ["ocean", "golden hour"], "source": "caller"}})
+    idx = first["index"]
+    assert first["report"]["analysed"] == ["beach_sunset.mp4", "city/night_street.mp4", "montage.mp4", "phone_clip.mp4", "room_tone.wav"]
+    assert idx["clip_count"] == 5 and first["report"]["failed"] == [] and len(e.executions) == 11   # 5 probes + 4 videos + 2 audio
+    clips = {c["path"]: c for c in idx["clips"]}
+    assert clips["montage.mp4"]["scene_type"] == "multi_shot" and clips["montage.mp4"]["shots"]["count"] == 3
+    assert clips["phone_clip.mp4"]["video"]["orientation"] == "portrait" and clips["room_tone.wav"]["scene_type"] == "audio_only"
+    assert clips["beach_sunset.mp4"]["representative_time"] == 3.0 and clips["beach_sunset.mp4"]["external_tags"] == ["golden hour", "ocean"]
+    paths = lambda doc: [h["path"] for h in doc["results"]]   # noqa: E731
+    assert paths(search(idx, ["ocean"])) == ["beach_sunset.mp4"]
+    assert paths(search(idx, orientation="portrait")) == ["phone_clip.mp4"]
+    assert paths(search(idx, tags=["multi-shot"])) == ["montage.mp4"]
+    assert paths(search(idx, ["night"])) == ["city/night_street.mp4"]
+    assert paths(search(idx, has_audio=False)) == ["city/night_street.mp4", "montage.mp4", "phone_clip.mp4"]
+    assert paths(search(idx, tags=["has-audio"], max_duration=4)) == ["room_tone.wav"]
+    assert paths(search(idx, scene_type="single_shot", min_duration=5)) == ["beach_sunset.mp4"]
+    # second scan, nothing changed: no analyzer runs at all, the index is the same, external tags survive
+    before = len(e.executions)
+    second = build_index(e, str(lib), idx)
+    assert len(e.executions) == before and second["report"]["analysed"] == [] and len(second["report"]["reused"]) == 5
+    assert second["index"]["clips"] == idx["clips"]
+    # one file replaced, one removed, one added: exactly those are measured
+    shutil.copy2(str(media["short"]), str(lib / "montage.mp4"))
+    os.utime(str(lib / "montage.mp4"), ns=(1_000_000_000, 1_000_000_000))
+    (lib / "phone_clip.mp4").unlink()
+    shutil.copy2(str(media["stereo"]), str(lib / "city" / "ambience.wav"))
+    third = build_index(e, str(lib), second["index"])
+    assert third["report"]["analysed"] == ["city/ambience.wav", "montage.mp4"] and third["report"]["removed"] == ["phone_clip.mp4"]
+    assert len(third["report"]["reused"]) == 3 and len(e.executions) == before + 3 + 2   # short.mp4: probe + scenes + loudness; stereo.wav: probe + loudness
+    assert {c["path"] for c in third["index"]["clips"]} == {"beach_sunset.mp4", "city/night_street.mp4", "montage.mp4", "room_tone.wav", "city/ambience.wav"}
+
+
+def test_library_cli(media, tmp_path):
+    lib = _library_folder(media, tmp_path / "lib")
+    (tmp_path / "tags.json").write_text(json.dumps({"beach_sunset.mp4": ["ocean"]}), encoding="utf-8")
+    r = cli("library", "index", str(lib), "--index", "idx/library.json", "--tags", "tags.json", "--json", cwd=tmp_path)
+    assert r.returncode == 0, r.stderr
+    doc = json.loads(r.stdout)
+    assert doc["clip_count"] == 5 and len(doc["report"]["analysed"]) == 5 and (tmp_path / "idx" / "library.json").is_file()
+    again = json.loads(cli("library", "index", str(lib), "--index", "idx/library.json", "--json", cwd=tmp_path).stdout)
+    assert again["report"]["analysed"] == [] and again["analyzer_executions"] == 0
+    hits = json.loads(cli("library", "search", "--index", "idx/library.json", "--query", "ocean", "--json", cwd=tmp_path).stdout)
+    assert [h["path"] for h in hits["results"]] == ["beach_sunset.mp4"]
+    bad = cli("library", "index", str(lib), "--index", str(tmp_path.parent / "outside.json"), "--json", cwd=tmp_path)
+    assert bad.returncode != 0 and json.loads(bad.stdout)["error"]["code"] == "PATH_NOT_ALLOWED"
+    (tmp_path / "bad_tags.json").write_text(json.dumps({"missing.mp4": ["x"]}), encoding="utf-8")
+    bad = cli("library", "index", str(lib), "--index", "idx/library.json", "--tags", "bad_tags.json", "--json", cwd=tmp_path)
+    assert bad.returncode != 0 and json.loads(bad.stdout)["error"]["code"] == "INVALID_INPUT"
+
+
 def test_cache_hit_skips_analyzer(media, tmp_path):
     e = engine(tmp_path, cache=True)
     first = e.analyze({"asset_id": "asset-1", "input": str(media["av"]), "kind": "loudness"})

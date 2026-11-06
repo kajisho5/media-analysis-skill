@@ -141,6 +141,30 @@ def build_parser() -> argparse.ArgumentParser:
     sd.add_argument("candidate", help="profile of the edit to compare")
     _add_common(sd)
 
+    lb = sub.add_parser("library", help="index a folder of clips with measured metadata and tags, and search the index (ADR-031)")
+    lbsub = lb.add_subparsers(dest="library_cmd", required=True)
+    li = lbsub.add_parser("index", help="scan a folder; only new or changed files are analysed")
+    li.add_argument("folder", help="library folder (read only; every clip under it is an allowed input)")
+    li.add_argument("--index", required=True, help="index file to create or update (inside the workspace)")
+    li.add_argument("--tags", help="external tags for clips: {\"<relative path>\": [tags]} or [{path, tags, source}]")
+    li.add_argument("--timeout", type=float, help="seconds per analyzer execution (default 600)")
+    li.add_argument("--cache-dir", help="observation cache directory (inside the workspace); omit to disable caching")
+    li.add_argument("--workspace", help="directory writes are confined to (default: current directory)")
+    _add_common(li)
+    ls_ = lbsub.add_parser("search", help="search an index by keyword, tag and condition")
+    ls_.add_argument("--index", required=True, help="index file written by `library index`")
+    ls_.add_argument("--query", action="append", help="keyword(s); each must match a tag or a word of the clip's path (repeatable)")
+    ls_.add_argument("--tag", action="append", help="tag the clip must carry (repeatable)")
+    ls_.add_argument("--min-duration", type=float)
+    ls_.add_argument("--max-duration", type=float)
+    ls_.add_argument("--orientation", choices=["landscape", "portrait", "square"])
+    ls_.add_argument("--min-height", type=int, help="minimum video height in pixels")
+    ls_.add_argument("--has-audio", dest="has_audio", action="store_const", const=True, default=None)
+    ls_.add_argument("--no-audio", dest="has_audio", action="store_const", const=False)
+    ls_.add_argument("--scene-type", choices=["single_shot", "multi_shot", "audio_only"])
+    ls_.add_argument("--limit", type=int)
+    _add_common(ls_)
+
     k = sub.add_parser("conformance", help="run AI-video-production-OS SKILL_SPEC.md section 8 self-checks against this installation")
     _add_common(k)
     return ap
@@ -401,6 +425,56 @@ def _style_diff(args: argparse.Namespace, as_json: bool) -> int:
     return 0
 
 
+def _fail(e: AnalysisError, as_json: bool) -> int:
+    response = AnalysisEngine.error_response(e)
+    if as_json:
+        emit_json(response)
+    else:
+        sys.stderr.write(f"error [{e.code}]: {e.message}" + (f" {json.dumps(e.details)}" if e.details else "") + "\n")
+    return exit_code_for(response)
+
+
+def _library(args: argparse.Namespace, as_json: bool) -> int:
+    from pathlib import Path
+    from . import library
+    try:
+        if args.library_cmd == "index":
+            policy = PathPolicy(workspace=args.workspace, allowed_input_roots=[args.folder])
+            cache = ObservationCache(args.cache_dir, policy) if args.cache_dir else None
+            engine = AnalysisEngine(policy=policy, cache=cache, budget=Budget(timeout=args.timeout or 600.0))
+            target = Path(args.index) if os.path.isabs(args.index) else policy.workspace / args.index
+            previous = library.load_index(target)
+            external = library.parse_external_tags(_load_json(args.tags)) if args.tags else None
+            out = library.build_index(engine, args.folder, previous, external)
+            written = library.write_index(policy, args.index, out["index"])
+            doc = {"schema": "media-analysis/library-scan@1", "index": str(written), "root": out["index"]["root"],
+                   "clip_count": out["index"]["clip_count"], "report": out["report"], "analyzer_executions": len(engine.executions)}
+            if as_json:
+                emit_json(doc)
+            else:
+                r = doc["report"]
+                print(f"library {doc['root']}: {doc['clip_count']} clips -> {doc['index']}")
+                print(f"  analysed {len(r['analysed'])}, reused {len(r['reused'])}, removed {len(r['removed'])}, failed {len(r['failed'])}")
+                for f in r["failed"]:
+                    print(f"  failed: {f['path']} [{f['code']}] {f['message']}")
+            return 0
+        index = library.load_index(Path(args.index))
+        if index is None:
+            raise AnalysisError("FILE_NOT_FOUND", f"library index not found: {args.index}")
+        doc = library.search(index, args.query, args.tag, min_duration=args.min_duration, max_duration=args.max_duration,
+                             orientation=args.orientation, min_height=args.min_height, has_audio=args.has_audio,
+                             scene_type=args.scene_type, limit=args.limit)
+    except AnalysisError as e:
+        return _fail(e, as_json)
+    if as_json:
+        emit_json(doc)
+    else:
+        print(f"{doc['result_count']} clips")
+        for h in doc["results"]:
+            print(f"  {h['path']}  {h['duration']}s  @{h['representative_time']}s  [{', '.join(h['tags'] or [])}]")
+    return 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     as_json = bool(getattr(args, "json", False))
@@ -418,6 +492,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return _conformance(as_json)
     if args.cmd == "style" and args.style_cmd == "diff":
         return _style_diff(args, as_json)
+    if args.cmd == "library":
+        return _library(args, as_json)
     try:
         engine = _engine(args)
         document = _document(args)
