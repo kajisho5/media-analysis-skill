@@ -155,3 +155,36 @@ method, measurement` (ADR-029).
   equal}]}`; a metric missing on either side is `status: unavailable` with `missing_in`, never 0. Inputs may be a
   saved profile Observation (`style profile --out`), its `data`, or a response document with one `edit_style`
   Observation. The diff states differences; it does not say which edit is better.
+
+## `library index` / `library search` (CLI workflow, ADR-031)
+
+Not an analysis kind: it reads a folder and writes one index file. Every measurement goes through the engine
+(`media_probe`; `scene_detection` when there is video; `loudness` when there is audio), with the folder as the only
+allowed input root and the index confined to the workspace.
+
+- `library index <folder> --index <file> [--tags <file>] [--cache-dir DIR] [--timeout S] [--workspace DIR] --json` →
+  `{schema: media-analysis/library-scan@1, index, root, clip_count, report{analysed[], reused[], removed[],
+  failed[{path, code, message}], external_tags_dropped[]}, analyzer_executions}`.
+- Index (`media-analysis/library-index@1`): `root, updated_at, skill_version, clip_count, clips[], external_tags{path:
+  {tags, source, fingerprint}}, failed[]`. A clip: `path` (relative, `/`), `fingerprint` (sha256), `file_size`,
+  `mtime_ns`, `duration`, `container`, `size`, `video{codec, width, height, fps, orientation, resolution_class,
+  fps_class}` or null, `shots{count, cut_count, longest_shot_seconds}` or null, `representative_time` (middle of the
+  longest shot; a time, no image is written), `scene_type` (`single_shot` / `multi_shot` / `audio_only`),
+  `audio{codec, channels, sample_rate, integrated_lufs, silent}` or null, `measured_tags[]`, `external_tags[]`,
+  `tags[]` (both), `name_words[]` (words of the relative path), `analysed_with{kinds, skill_version}`.
+- Measured tags, by fixed rules: orientation (`landscape` / `portrait` / `square`, rotation applied), resolution class
+  of the short side (`sd` < 720 ≤ `hd` < 1080 ≤ `fhd` < 1440 ≤ `qhd` < 2160 ≤ `uhd`), frame-rate class (`25fps`,
+  `29.97fps`, ...), video codec, `single-shot` / `multi-shot` / `audio-only`, `has-audio` / `no-audio` /
+  `silent-audio` (integrated loudness below the −70 LUFS gate), duration class (`short` < 5 s ≤ `medium` < 30 s ≤
+  `long`), file extension.
+- `--tags`: `{"<relative path>": ["tag", ...]}` or `[{"path", "tags", "source"}]`; tags are lower-cased and trimmed.
+  A path not in the folder is `INVALID_INPUT`. Stored with the fingerprint of the file they were given for; when the
+  file changes they are dropped and listed in `external_tags_dropped`.
+- Re-scan: a file whose size and modification time equal the index entry is carried over without being opened or
+  hashed; anything else is measured again; files no longer present are removed. Hidden files and folders are skipped;
+  only media extensions are scanned.
+- `library search --index <file> [--query W]... [--tag T]... [--min-duration S] [--max-duration S] [--orientation O]
+  [--min-height PX] [--has-audio | --no-audio] [--scene-type T] [--limit N] --json` →
+  `{schema: media-analysis/library-search@1, root, result_count, results[{path, score, matched[{word, tags,
+  name_words}], duration, representative_time, tags}], conditions}`. Every condition must hold; every query word must
+  prefix-match a tag or a path word. `score` = matched words + exact tag matches; ties by path.

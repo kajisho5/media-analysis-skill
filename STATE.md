@@ -23,7 +23,8 @@ against the code, a command run or the GitHub API on that date; anything that co
 ## CURRENT (implemented, tested, on main)
 - CLI `media-analysis` (`media_analysis.cli:main`), subcommands: `probe`, `analyze`, `run` (canonical machine
   interface: `run <request.json | -> --json`, one response document on stdout), `doctor`, `contract`, `conformance`, `style` (`style profile <input> --out <file>`
-  saves an `edit_style` profile, `style diff <ref> <cand>` compares two; ADR-030).
+  saves an `edit_style` profile, `style diff <ref> <cand>` compares two; ADR-030), `library` (`library index <folder>
+  --index <file>` / `library search`: a B-roll index with measured metadata and tags, incremental re-scan; ADR-031).
 - Contract `media-analysis/contract@1` (`schema_versions`: contract / request / response / observation all `1`).
   11 tools, 12 analysis kinds, derived from the analyzer registry:
 
@@ -83,8 +84,8 @@ against the code, a command run or the GitHub API on that date; anything that co
 - No other caller found in the sibling checkouts; whether anything outside them calls it is **unverified**.
 
 ## Tests and CI
-- `python -m pytest -q`: **122 passed** locally on 2026-11-06 (Python 3.11, FFmpeg 6.1.1, Linux) from 91 test
-  functions — collected per file: `test_contract.py` 43, `test_integration.py` 38, `test_unit.py` 39, `test_evals.py` 2.
+- `python -m pytest -q`: **125 passed** locally on 2026-11-06 (Python 3.11, FFmpeg 6.1.1, Linux) from 94 test
+  functions — collected per file: `test_contract.py` 43, `test_integration.py` 40, `test_unit.py` 40, `test_evals.py` 2.
 - `python evals/run.py` 14/14 measurement evals; `python evals/contract_evals.py` 17/17 contract evals;
   `python -m pyflakes src tests evals` clean.
 - `.github/workflows/tests.yml` (push to main, every PR), real FFmpeg on every job:
@@ -102,7 +103,7 @@ against the code, a command run or the GitHub API on that date; anything that co
 - No MCP transport (ADR-010: not before a consumer needs one).
 
 ## NOT DONE / PLANNED
-See `ECOSYSTEM_ROADMAP.md`. Steps 1–3 and 7 are done (step 3: `noise_floor` and `timing.av_start_offset`, ADR-029). Still
+See `ECOSYSTEM_ROADMAP.md`. Steps 1–3, 7 and 8 are done (step 3: `noise_floor` and `timing.av_start_offset`, ADR-029). Still
 not measured by anyone, recorded in ADR-029: a reverberation measure (voice-enhance DEREVERB) and picture sharpness /
 exposure (video-production-agent take selection).
 

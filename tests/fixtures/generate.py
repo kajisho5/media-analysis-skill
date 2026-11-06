@@ -20,7 +20,8 @@ Every fixture has a known construction so expected values in tests and evals are
                   1 kHz tone amplitude 0.1 (-23.0 LUFS) for the whole 7.44 s; no subtitles
   style_b.mkv     edit with known cuts: shots of 10, 10, 20, 30, 30, 40, 40 frames @25 fps (180 frames; median 30),
                   1 kHz tone amplitude 0.2 (-17.0 LUFS) only for t < 4 s (3.2 s trailing silence), and an SRT stream of
-                  4 events of 1 s each, the last one positioned at the top with {\an8}
+                  4 events of 1 s each, the last one positioned at the top with {\\an8}
+  portrait.mp4    2 s, 180x320 (portrait) @30 fps H.264, no audio
 """
 from __future__ import annotations
 
@@ -66,7 +67,7 @@ def build_all(directory: Path) -> Dict[str, Path]:
         "av": "av.mp4", "video_only": "video_only.mp4", "stereo": "stereo.wav", "mono": "mono.wav", "silence": "silence.wav",
         "multi": "multi.mp4", "loud": "loud.wav", "short": "short.mp4", "scenes": "scenes.mp4", "corrupt": "corrupt.mp4",
         "noisy": "noisy.wav", "cleaned": "cleaned.wav", "av_offset": "av_offset.mkv",
-        "style_a": "style_a.mp4", "style_b": "style_b.mkv"}.items()}
+        "style_a": "style_a.mp4", "style_b": "style_b.mkv", "portrait": "portrait.mp4"}.items()}
     _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-f", "lavfi", "-i", f"aevalsrc='{TONE_GATED}':s=48000", "-t", "6",
           *X264, "-c:a", "aac", "-shortest", str(f["av"])])
     _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-t", "4", *X264, str(f["video_only"])])
@@ -97,6 +98,7 @@ def build_all(directory: Path) -> Dict[str, Path]:
     n = len(STYLE_B_SHOTS)
     _run([*inputs, "-f", "lavfi", "-i", "aevalsrc='0.2*sin(2*PI*1000*t)*lt(t\\,4)':s=48000", "-i", str(srt), "-filter_complex", graph,
           "-map", "[v]", "-map", f"{n}:a", "-map", f"{n + 1}:s", "-t", "7.2", *X264, "-c:a", "pcm_s16le", "-c:s", "srt", str(f["style_b"])])
+    _run(["-f", "lavfi", "-i", "testsrc2=size=180x320:rate=30", "-t", "2", *X264, str(f["portrait"])])
     data = bytearray(f["av"].read_bytes())
     mid = len(data) // 2
     data[mid:mid + 3000] = b"\x00" * 3000

@@ -324,3 +324,34 @@
   one kind, one `provides` entry, six parameters; `capability_names` unchanged (the three filters were already
   required). video-production-agent's adapter accepts extra tools; it sees `edit_style` after a re-pin of its
   contract snapshot.
+
+## ADR-031 A B-roll library index as a CLI workflow over the existing kinds
+- Context: roadmap step 8. An editor's own footage folder is searched again for every project ("a portrait clip under
+  10 s with no sound", "the beach shots"). The facts needed to answer most of that are measurements this Skill already
+  makes per file; what is missing is running them over a folder, keeping them, and querying them. Content labels
+  ("beach", "interview") are a model's job, which this Skill does not do (CLAUDE.md invariant).
+- Decision: `media-analysis library index` / `library search`, a CLI workflow in `library.py`, not a new analysis kind.
+  - Why not a kind: a request has one `input` file and primitive parameters, and an analyzer never writes files; an
+    index is many files in and one file out. Every number in the index still comes from an Observation the engine
+    produced (`media_probe`, `scene_detection`, `loudness`), under the same path policy (the folder is the only
+    allowed input root, the index must be inside the workspace), timeouts and optional cache.
+  - Metadata and measured tags follow fixed, documented rules (orientation with rotation applied, resolution class of
+    the short side, frame-rate class, codec, shot structure, audio present / silent, duration class, extension).
+    "Scene type" is shot structure (`single_shot` / `multi_shot` / `audio_only`), not what the picture shows. The
+    representative frame is a time (the middle of the longest shot); no image is extracted, so the folder and the
+    workspace get no media written to them.
+  - Tags from elsewhere (for example a vision model run by the caller) come in through `--tags` and are kept apart
+    from measured tags (`external_tags` vs `measured_tags`, both in `tags`), with the fingerprint of the file they
+    describe; a changed file drops them (`external_tags_dropped`) rather than carrying a stale label.
+  - Incremental re-scan: size and modification time (ns) equal to the index entry → carried over without opening or
+    hashing the file; otherwise measured again (the engine fingerprints it). This is the usual trade: a same-size
+    rewrite with a restored mtime is not noticed; `--cache-dir` still makes a forced full re-scan cheap, because
+    unchanged content hits the Observation cache.
+  - Search is plain filtering: every condition must hold and every query word must prefix-match a tag or a word of the
+    relative path; ranking is matched words + exact tag matches, ties by path, so results are deterministic.
+- Not chosen: a database (SQLite) — one JSON file is enough for a personal folder, diffable and readable by the agent
+  without a driver. Not chosen: thumbnails — writing images is media output, and ffmpeg-skill extracts a frame from
+  `representative_time` when one is wanted. Not chosen: a motion / brightness class — it needs a further filter pass
+  per clip (`signalstats`) and no consumer asked for it yet; it can be added as a measured tag later.
+- Contract unchanged (no tool, kind or `provides` entry added); the agent pin is not affected. The agent can call
+  `library` as a subprocess like `run`, but it is not part of the `run` protocol.

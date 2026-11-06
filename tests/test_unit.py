@@ -698,3 +698,33 @@ def test_edit_style_subtitles_present_over_every_stream():
     assert s["present"] is True and s["summary_stream_index"] == 2 and s["events_per_minute"] == 0.0   # summary: first measured stream
     assert subtitle_summary(1, [empty])["present"] is False and subtitle_summary(1, [bitmap])["present"] is False
     assert subtitle_summary(0, [])["summary_stream_index"] is None
+
+
+# ---- library helpers (ADR-031)
+def test_library_describe_and_search():
+    from media_analysis.library import describe, name_words, parse_external_tags, search
+    assert name_words("Trips/Beach_Sunset-02.MP4") == ["trips", "beach", "sunset", "02"]
+    probe = {"container": {"duration": 12.0, "format": "mov,mp4", "size": 10},
+             "video": {"codec": "h264", "width": 1920, "height": 1080, "fps": 30000 / 1001, "rotation": 90}, "audio": None}
+    scenes = {"scene_count": 2, "cut_count": 1, "scenes": [{"index": 0, "start": 0.0, "end": 4.0, "duration": 4.0},
+                                                         {"index": 1, "start": 4.0, "end": 12.0, "duration": 8.0}]}
+    c = describe(probe, scenes, None)
+    assert c["video"]["orientation"] == "portrait" and c["video"]["resolution_class"] == "fhd" and c["video"]["fps_class"] == "29.97fps"
+    assert c["representative_time"] == 8.0 and c["scene_type"] == "multi_shot" and c["audio"] is None
+    assert set(c["measured_tags"]) == {"portrait", "fhd", "29.97fps", "h264", "multi-shot", "no-audio", "medium"}
+    ext = parse_external_tags([{"path": "a\\b.mp4", "tags": ["Ocean ", "ocean"], "source": "vision-model"}])
+    assert ext == {"a/b.mp4": {"tags": ["ocean"], "source": "vision-model"}}
+    for bad in ({"a.mp4": "ocean"}, [{"path": "a.mp4", "tags": [""]}], "x"):
+        with pytest.raises(AnalysisError):
+            parse_external_tags(bad)
+    index = {"root": "/lib", "clips": [
+        {"path": "beach.mp4", "duration": 6.0, "video": {"orientation": "landscape", "height": 1080}, "audio": {}, "scene_type": "single_shot",
+         "tags": ["landscape", "ocean"], "name_words": ["beach"]},
+        {"path": "phone.mp4", "duration": 2.0, "video": {"orientation": "portrait", "height": 320}, "audio": None, "scene_type": "single_shot",
+         "tags": ["portrait"], "name_words": ["phone"]}]}
+    assert [h["path"] for h in search(index, ["Ocean"])["results"]] == ["beach.mp4"]
+    assert [h["path"] for h in search(index, ["bea"])["results"]] == ["beach.mp4"]          # prefix of a path word
+    assert [h["path"] for h in search(index, has_audio=False)["results"]] == ["phone.mp4"]
+    assert [h["path"] for h in search(index, min_height=720)["results"]] == ["beach.mp4"]
+    assert search(index, ["ocean", "phone"])["result_count"] == 0                             # every word must match
+    assert [h["path"] for h in search(index, max_duration=3)["results"]] == ["phone.mp4"]

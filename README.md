@@ -161,6 +161,14 @@ observation; `status` of the response is `ok`, `partial` or `error`. Full refere
 | `noise_floor` | `media-analysis/noise` | ffmpeg `astats` | short-window RMS → noise floor (p10), signal level (p95), no-reference SNR estimate; one channel or all |
 | `edit_style` | `media-analysis/style` | ffmpeg `scdet`, `ebur128`, `silencedetect` | editing-style profile: cuts per minute, shot-length distribution (frames and seconds), soft-subtitle frequency / coverage / position, loudness, silence share; `media-analysis style diff` compares two profiles |
 
+Workflow commands built on these kinds (CLI only, not analysis kinds: they read a folder and write an index, which one
+request cannot express):
+
+- `media-analysis library index <folder> --index <file> [--tags <file>]` / `library search --index <file> --query ...`:
+  a B-roll library. Each clip gets measured metadata (duration, resolution, orientation, frame rate, shot count,
+  representative frame time, scene type, audio) and measured tags; tags made elsewhere (e.g. by an AI model) are passed
+  in with `--tags`. A re-scan measures only new or changed files (ADR-031).
+
 ## How video-production-agent consumes media-analysis-skill
 
 ```text
