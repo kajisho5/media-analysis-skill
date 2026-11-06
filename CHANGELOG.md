@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.12 - 2026-11-06
+
+- Highlight candidates from long recordings (roadmap step 9) (#26) (ea55c74)
+
 ## v0.1.11 - 2026-11-06
 
 - B-roll library index and search (roadmap step 8) (#25) (1b0146f)
