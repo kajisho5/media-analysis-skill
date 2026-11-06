@@ -67,6 +67,8 @@ PARAMETER_SCHEMAS: Dict[str, Dict[str, Dict[str, Any]]] = {
         "min_shot_duration": {"type": _NUM, "default": 0.25, "min": 0.0, "max": 3600.0},
         "silence_threshold_db": {"type": _NUM, "default": -50.0, "min": -120.0, "max": 0.0},
         "silence_min_duration": {"type": _NUM, "default": 0.5, "min": 0.01, "max": 3600.0},
+        # ADR-033: seconds between frames sampled for burned-in subtitles; 0 turns that measurement off
+        "burned_in_interval": {"type": _NUM, "default": 1.0, "min": 0.0, "max": 60.0},
     },
 }
 
@@ -98,7 +100,7 @@ TOOL_DESCRIPTIONS: Dict[str, str] = {
     "scenes": "Deterministic visual scene-cut detection (scdet score), not semantic scene understanding",
     "timing": "Duration and timing facts: start times, per-stream durations, A/V duration mismatch and start offset, timestamp discontinuities",
     "noise": "Noise floor, signal level and no-reference SNR estimate of one audio stream (or one channel) from short-window RMS",
-    "style": "Editing-style profile: cut rate and shot-length distribution, soft-subtitle frequency / coverage / position, loudness and silence share",
+    "style": "Editing-style profile: cut rate and shot-length distribution, soft and burned-in subtitle frequency / coverage / position, loudness and silence share",
 }
 
 TOOL_CAPABILITIES: Dict[str, List[str]] = {
@@ -112,7 +114,7 @@ TOOL_CAPABILITIES: Dict[str, List[str]] = {
     "scenes": ["ffprobe", "ffmpeg", "filter:scdet"],
     "timing": ["ffprobe"],
     "noise": ["ffprobe", "ffmpeg", "filter:astats"],
-    "style": ["ffprobe", "ffmpeg", "filter:scdet", "filter:ebur128", "filter:silencedetect"],
+    "style": ["ffprobe", "ffmpeg", "filter:scdet", "filter:ebur128", "filter:silencedetect", "filter:edgedetect"],
 }
 
 

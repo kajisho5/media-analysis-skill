@@ -6,9 +6,12 @@
     audio      EBU R128 integrated loudness, loudness range, true peak (ebur128); share of the running time that is
                silent / active (silencedetect) and the longest silence
 
-What is not measured is listed in `unmeasured` and never guessed: burned-in (open) subtitles need text detection in
-the picture, and whether a music bed runs under the speech needs an audio classifier. Neither is a deterministic
-filter output, so both stay out until a method is chosen in its own ADR.
+    burned-in  subtitles drawn into the picture: share of the running time with text on screen, switches per minute,
+               position, text height, regions / approximate characters per frame, band and outline (burnin.py,
+               ADR-033; text-like structure from an edge map, no OCR)
+
+What is not measured is listed in `unmeasured` and never guessed: whether a music bed runs under the speech needs an
+audio classifier, which is not a deterministic filter output.
 
 `diff_profiles` compares two profiles metric by metric (reference vs candidate). It states differences; whether a
 difference matters is the caller's rule."""
@@ -21,6 +24,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from ..errors import AnalysisError
 from ..probe import container_duration, streams_of
 from ..runner import FF_INPUT_PREFIX, ffmpeg_null_argv, run_argv
+from . import burnin
 from .base import PROBE_OP, AnalysisContext, Analyzer
 from .loudness import parse_ebur128
 from .scenes import parse_scdet
@@ -30,7 +34,6 @@ PROFILE_SCHEMA = "media-analysis/edit-style@1"
 TEXT_SUBTITLE_CODECS = ("subrip", "srt", "ass", "ssa", "mov_text", "webvtt", "text")
 HISTOGRAM_EDGES = (0.0, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0)          # seconds; the last bucket is open-ended
 UNMEASURED = [
-    {"item": "subtitles.burned_in", "reason": "subtitles drawn into the picture need text detection, not a filter measurement"},
     {"item": "audio.music_bed", "reason": "telling music from speech needs an audio classifier; active_share is reported instead"},
 ]
 
@@ -212,7 +215,7 @@ def subtitle_stream_profile(events: List[Dict[str, Any]], duration: Optional[flo
             "positions": positions, "dominant_position": dominant}
 
 
-def subtitle_summary(soft_stream_count: int, streams: List[Dict[str, Any]]) -> Dict[str, Any]:
+def subtitle_summary(soft_stream_count: int, streams: List[Dict[str, Any]], burned_in: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """`present` covers every measured stream (an empty forced track may come before the dialogue track); the summary
     fields are the first measured stream's."""
     measured = [x for x in streams if x["status"] == "measured"]
@@ -222,7 +225,7 @@ def subtitle_summary(soft_stream_count: int, streams: List[Dict[str, Any]]) -> D
             "coverage_share": first["coverage_share"] if first else None,
             "dominant_position": first["dominant_position"] if first else None,
             "summary_stream_index": first["stream_index"] if first else None,
-            "burned_in": "not_measured"}
+            "burned_in": burned_in if burned_in is not None else {"status": "not_performed", "reason": "not requested"}}
 
 
 # ---- audio
@@ -237,14 +240,16 @@ def audio_activity(silences: List[Tuple[float, Optional[float]]], duration: Opti
 
 class StyleAnalyzer(Analyzer):
     id = "style"
-    algorithm_version = "1"
+    algorithm_version = "2"          # 2: subtitles.burned_in is measured (ADR-033)
     supported_kinds = ("edit_style",)
-    required_capabilities = ("ffprobe", "ffmpeg", "filter:scdet", "filter:ebur128", "filter:silencedetect")
+    required_capabilities = ("ffprobe", "ffmpeg", "filter:scdet", "filter:ebur128", "filter:silencedetect", "filter:edgedetect")
 
     def plan(self, ctx, kind, parameters):
         return [PROBE_OP,
                 {"executable": "ffmpeg", "purpose": f"scdet (threshold={parameters['threshold']}) on video stream {parameters['video_stream']}, null output"},
                 {"executable": "ffmpeg", "purpose": "each text subtitle stream converted to ASS on stdout (event times and positions)"},
+                {"executable": "ffmpeg", "purpose": f"frames every {parameters['burned_in_interval']}s of video stream {parameters['video_stream']} "
+                                                    "as grey + edge map on stdout (burned-in subtitles; 0 = off)"},
                 {"executable": "ffmpeg", "purpose": f"ebur128 + silencedetect (noise={parameters['silence_threshold_db']}dB) on audio stream {parameters['audio_stream']}, null output"}]
 
     def _video(self, ctx: AnalysisContext, p: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str, Any]:
@@ -257,7 +262,7 @@ class StyleAnalyzer(Analyzer):
         if not fps:
             return {"status": "not_performed", "reason": "video stream declares no frame rate", "stream_index": s["index"]}
         ctx.record("ffmpeg", f"scdet on video stream {n}")
-        argv = ffmpeg_null_argv(ctx.exe("ffmpeg"), ctx.input_path, "-map", f"0:v:{n}", "-an", "-sn", "-vf",
+        argv = ffmpeg_null_argv(ctx.exe("ffmpeg"), ctx.input_path, "-map", f"0:V:{n}", "-an", "-sn", "-vf",
                                 f"scdet=threshold={parameters['threshold']},metadata=print:file=-", loglevel="error")
         r = run_argv(argv, ctx.timeout)
         if r.returncode != 0:
@@ -274,7 +279,23 @@ class StyleAnalyzer(Analyzer):
                     "min_shot_duration": parameters["min_shot_duration"]})
         return out
 
-    def _subtitles(self, ctx: AnalysisContext, p: Dict[str, Any], duration: Optional[float]) -> Dict[str, Any]:
+    def _burned_in(self, ctx: AnalysisContext, p: Dict[str, Any], parameters: Dict[str, Any], duration: Optional[float]) -> Dict[str, Any]:
+        interval = parameters["burned_in_interval"]
+        if interval <= 0:
+            return {"status": "not_performed", "reason": "burned_in_interval is 0 (off)"}
+        vs = streams_of(p, "video")
+        n = parameters["video_stream"]
+        if n >= len(vs):
+            return {"status": "not_performed", "reason": "no such video stream"}
+        v = vs[n]["video"]
+        if not v["width"] or not v["height"]:
+            return {"status": "not_performed", "reason": "video stream declares no frame size"}
+        ctx.record("ffmpeg", f"frame sampling every {interval}s on video stream {n} (burned-in subtitles)")
+        out = burnin.measure(ctx.exe("ffmpeg"), ctx.input_path, n, v["width"], v["height"], interval, duration, ctx.timeout)
+        out["stream_index"] = vs[n]["index"]
+        return out
+
+    def _subtitles(self, ctx: AnalysisContext, p: Dict[str, Any], duration: Optional[float], parameters: Dict[str, Any]) -> Dict[str, Any]:
         subs = streams_of(p, "subtitle")
         streams = []
         for ordinal, s in enumerate(subs):
@@ -292,7 +313,7 @@ class StyleAnalyzer(Analyzer):
             else:
                 row.update({"status": "measured", **subtitle_stream_profile(parse_ass_events(r.stdout), duration)})
             streams.append(row)
-        return subtitle_summary(len(subs), streams)
+        return subtitle_summary(len(subs), streams, self._burned_in(ctx, p, parameters, duration))
 
     def _audio(self, ctx: AnalysisContext, p: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str, Any]:
         aus = streams_of(p, "audio")
@@ -323,7 +344,7 @@ class StyleAnalyzer(Analyzer):
         if not streams_of(p, "video") and not streams_of(p, "audio"):
             raise AnalysisError("UNSUPPORTED_FORMAT", "input has neither a video nor an audio stream")
         return {"profile_schema": PROFILE_SCHEMA, "duration": duration, "video": self._video(ctx, p, parameters),
-                "subtitles": self._subtitles(ctx, p, duration), "audio": self._audio(ctx, p, parameters),
+                "subtitles": self._subtitles(ctx, p, duration, parameters), "audio": self._audio(ctx, p, parameters),
                 "unmeasured": [dict(u) for u in UNMEASURED]}
 
 
@@ -334,9 +355,13 @@ NUMERIC_METRICS = (
     "video.shot_frames.min", "video.shot_frames.max",
     "video.shot_seconds.median", "video.shot_seconds.mean",
     "subtitles.events_per_minute", "subtitles.coverage_share",
+    "subtitles.burned_in.coverage_share", "subtitles.burned_in.switches_per_minute", "subtitles.burned_in.text_height_ratio.median",
+    "subtitles.burned_in.regions_per_frame.mean", "subtitles.burned_in.approx_chars_per_frame.median",
+    "subtitles.burned_in.band_share", "subtitles.burned_in.outline_share",
     "audio.integrated_lufs", "audio.loudness_range_lu", "audio.true_peak_dbtp", "audio.silence_share", "audio.longest_silence",
 )
-CATEGORICAL_METRICS = ("video.fps", "subtitles.present", "subtitles.dominant_position")
+CATEGORICAL_METRICS = ("video.fps", "subtitles.present", "subtitles.dominant_position", "subtitles.burned_in.present",
+                       "subtitles.burned_in.dominant_position")
 
 
 def profile_of(doc: Any) -> Dict[str, Any]:

@@ -212,7 +212,8 @@ def test_edit_style_known_cuts_and_diff(media, tmp_path):
     assert abs(sb["events_per_minute"] - 4 / 7.2 * 60) < 0.01 and abs(sb["coverage_share"] - 4 / 7.2) < 0.01
     assert abs(a["data"]["audio"]["integrated_lufs"] - (-23.0)) < 0.3 and abs(ab["integrated_lufs"] - (-17.0)) < 0.5
     assert a["data"]["audio"]["silence_share"] == 0.0 and abs(ab["longest_silence"] - 3.2) < 0.1
-    assert {u["item"] for u in a["data"]["unmeasured"]} == {"subtitles.burned_in", "audio.music_bed"}
+    assert {u["item"] for u in a["data"]["unmeasured"]} == {"audio.music_bed"}          # burned-in subtitles: measured since ADR-033
+    assert a["data"]["subtitles"]["burned_in"]["present"] is False and a["data"]["subtitles"]["burned_in"]["coverage_share"] == 0.0
     d = {i["metric"]: i for i in diff_profiles(a, b)["items"]}
     assert abs(d["video.shot_frames.median"]["difference"] - (_median(STYLE_B_SHOTS) - _median(STYLE_A_SHOTS))) <= 1
     assert d["video.shot_count"]["difference"] == 2 and d["video.cut_count"]["difference"] == 2
@@ -222,6 +223,41 @@ def test_edit_style_known_cuts_and_diff(media, tmp_path):
     # a stream that does not exist is reported, not raised; an audio-only file has no video part
     assert run(e, media["style_a"], "edit_style", audio_stream=3)["data"]["audio"]["status"] == "not_performed"
     assert run(e, media["mono"], "edit_style")["data"]["video"]["status"] == "not_performed"
+
+
+def test_edit_style_burned_in_subtitles(media, tmp_path):
+    """ADR-033 / roadmap step 10: on fixtures with and without burned-in subtitles of known timing, position and size,
+    coverage, position and text height match the construction, and the diff reports the difference."""
+    from media_analysis.analyzers.style import diff_profiles
+    e = engine(tmp_path)
+    burned = run(e, media["burned"], "edit_style", burned_in_interval=0.25)["data"]["subtitles"]["burned_in"]
+    clean = run(e, media["clean"], "edit_style", burned_in_interval=0.25)["data"]["subtitles"]["burned_in"]
+    assert burned["status"] == "measured" and burned["frames_sampled"] == 40 and burned["present"] is True
+    assert abs(burned["coverage_share"] - 0.7) <= 0.05                       # 7 of 10 s on screen
+    assert burned["switches"] == 3 and abs(burned["switches_per_minute"] - 18.0) < 0.01
+    assert burned["dominant_position"] == "bottom" and burned["positions"]["vertical"]["middle"] == 0
+    v = burned["positions"]["vertical"]
+    assert abs(v["bottom"] / float(v["bottom"] + v["top"]) - 6 / 7.0) <= 0.05 and burned["positions"]["horizontal"] == {"left": 0, "center": v["bottom"] + v["top"], "right": 0}
+    th = burned["text_height_ratio"]
+    assert abs(th["median"] - 24 / 360.0) <= 0.01 and abs(th["max"] - 28 / 360.0) <= 0.01   # plain text / text with its outline
+    assert abs(burned["band_share"] - 3 / 7.0) <= 0.05 and abs(burned["outline_share"] - 3 / 7.0) <= 0.05
+    assert burned["regions_per_frame"] == {"mean": 1.0, "max": 1}
+    assert clean["status"] == "measured" and clean["present"] is False and clean["coverage_share"] == 0.0 and clean["text_height_ratio"] is None
+    d = {i["metric"]: i for i in diff_profiles({"profile_schema": "media-analysis/edit-style@1", "subtitles": {"burned_in": clean}},
+                                               {"profile_schema": "media-analysis/edit-style@1", "subtitles": {"burned_in": burned}})["items"]}
+    assert abs(d["subtitles.burned_in.coverage_share"]["difference"] - 0.7) <= 0.05 and d["subtitles.burned_in.present"]["equal"] is False
+    assert d["subtitles.burned_in.text_height_ratio.median"]["status"] == "unavailable" and d["subtitles.burned_in.text_height_ratio.median"]["missing_in"] == ["reference"]
+    assert abs(d["subtitles.burned_in.switches_per_minute"]["difference"] - 18.0) < 0.01
+    # a clip shorter than the sampling interval yields no frame: not_performed, and the diff does not treat it as 0
+    short = run(e, media["short"], "edit_style", burned_in_interval=1.0)["data"]
+    sb = short["subtitles"]["burned_in"]
+    assert sb["status"] == "not_performed" and sb["frames_sampled"] == 0 and "coverage_share" not in sb and "shorter" in sb["reason"]
+    d2 = {i["metric"]: i for i in diff_profiles(short, {"profile_schema": "media-analysis/edit-style@1", "subtitles": {"burned_in": burned}})["items"]}
+    for m in ("subtitles.burned_in.coverage_share", "subtitles.burned_in.switches_per_minute", "subtitles.burned_in.present"):
+        assert d2[m]["status"] == "unavailable" and d2[m]["missing_in"] == ["reference"], m
+    off = run(e, media["burned"], "edit_style", burned_in_interval=0)["data"]["subtitles"]["burned_in"]
+    assert off["status"] == "not_performed"
+    assert run(e, media["mono"], "edit_style")["data"]["subtitles"]["burned_in"]["status"] == "not_performed"
 
 
 def test_edit_style_cli_profile_and_diff(media, tmp_path):

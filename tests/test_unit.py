@@ -771,3 +771,89 @@ def test_highlight_scoring_rules():
     for bad in ([], {"applause": [{"start": 2, "end": 1}]}, {"cheering": []}):
         with pytest.raises(AnalysisError):
             parse_signals(bad)
+
+
+# ---- burned-in subtitles (ADR-033)
+def _synthetic_frame(w, h, y0, y1, x0, n, bg=128, ink=255, band=None):
+    luma = bytearray([bg] * (w * h))
+    edges = bytearray(w * h)
+    if band is not None:
+        by0, by1, bx0, bx1, level = band
+        for y in range(by0, by1):
+            luma[y * w + bx0:y * w + bx1] = bytes([level]) * (bx1 - bx0)
+    for y in range(y0, y1):
+        for i in range(n):
+            x = x0 + i * 5
+            luma[y * w + x:y * w + x + 2] = bytes([ink, ink])
+            edges[y * w + x] = 255
+            edges[y * w + x + 2] = 255
+    return bytes(luma), bytes(edges)
+
+
+def test_burned_in_regions_and_summary():
+    from media_analysis.analyzers.burnin import analysis_size, frame_regions, summarise
+    assert analysis_size(1920, 1080) == (480, 270) and analysis_size(320, 180) == (320, 180)
+    w, h = 200, 100
+    luma, edges = _synthetic_frame(w, h, 80, 88, 60, 16)                 # 8 rows of 100, bottom, centred
+    regs = frame_regions(luma, edges, w, h)
+    assert len(regs) == 1 and regs[0]["vertical"] == "bottom" and regs[0]["horizontal"] == "center"
+    assert regs[0]["height_ratio"] == 0.08 and regs[0]["height_basis"] == "pixels" and regs[0]["band"] is False
+    banded = frame_regions(*_synthetic_frame(w, h, 80, 88, 60, 16, band=(74, 94, 50, 150, 0)), w, h)
+    assert banded[0]["band"] is True
+    top = frame_regions(*_synthetic_frame(w, h, 10, 18, 60, 16), w, h)
+    assert top[0]["vertical"] == "top"
+    empty = frame_regions(bytes([128] * (w * h)), bytes(w * h), w, h)
+    assert empty == []
+    s = summarise([regs, regs, [], top, top, []], 0.5, 3.0)
+    assert s["coverage_share"] == round(4 / 6, 6) and s["switches"] == 2 and s["switches_per_minute"] == 40.0
+    assert s["positions"]["vertical"] == {"top": 2, "middle": 0, "bottom": 2} and s["dominant_position"] == "bottom"
+    none = summarise([[], []], 1.0, 2.0)
+    assert none["present"] is False and none["text_height_ratio"] is None and none["band_share"] is None
+
+
+def test_stream_records_streams_and_times_out():
+    """stream_records hands over fixed-size records as they arrive (a trailing partial record is dropped), returns
+    stderr, and kills the child at the deadline like run_argv."""
+    import sys
+    from media_analysis.runner import stream_records
+    got = []
+    script = "import sys; sys.stdout.buffer.write(b'ab' * 5 + b'z'); sys.stderr.write('done')"
+    r = stream_records([sys.executable, "-c", script], 30, 4, got.append)
+    assert r.returncode == 0 and got == [b"abab", b"abab"] and r.stderr == "done"
+    with pytest.raises(AnalysisError) as ei:
+        stream_records([sys.executable, "-c", "import time; time.sleep(30)"], 0.5, 4, got.append)
+    assert ei.value.code == "ANALYZER_TIMEOUT"
+    with pytest.raises(AnalysisError) as ei:
+        stream_records(["x\x00y"], 1, 4, got.append)
+    assert ei.value.code == "INVALID_INPUT"
+
+
+def test_edit_style_selects_video_streams_without_cover_art(monkeypatch):
+    """streams_of() skips attached pictures (cover art), so ffmpeg must be told the same numbering: 0:V:n, not 0:v:n
+    (0:v counts cover art and would point at the wrong stream when the cover comes first)."""
+    from media_analysis.analyzers import burnin, style
+    from media_analysis.runner import RunResult
+    seen = []
+
+    def fake_stream(argv, timeout, size, on_record):
+        seen.append(argv)
+        return RunResult(0, "", "", 0.0)
+
+    monkeypatch.setattr(burnin, "stream_records", fake_stream)
+    out = burnin.measure("ffmpeg", "/x.mp4", 2, 640, 360, 1.0, 10.0, 5)
+    assert out["status"] == "not_performed" and out["frames_sampled"] == 0
+    graph = seen[0][seen[0].index("-filter_complex") + 1]
+    assert graph.startswith("[0:V:2]") and "0:v:" not in graph
+
+    def fake_run(argv, timeout):
+        seen.append(argv)
+        return RunResult(0, "", "", 0.0)
+
+    monkeypatch.setattr(style, "run_argv", fake_run)
+    probe = {"container": {"duration": 4.0}, "streams": [
+        {"index": 0, "type": "video", "disposition": ["attached_pic"], "duration": None, "nb_frames": 1, "video": {"fps": 25.0, "width": 64, "height": 64}},
+        {"index": 1, "type": "video", "disposition": [], "duration": 4.0, "nb_frames": 100, "video": {"fps": 25.0, "width": 320, "height": 180}}]}
+    ctx = AnalysisContext("/x.mp4", fake_caps(), 5)
+    ctx.exe = lambda name: name
+    v = style.StyleAnalyzer()._video(ctx, probe, {"video_stream": 0, "threshold": 10.0, "min_shot_duration": 0.25})
+    assert v["stream_index"] == 1 and seen[-1][seen[-1].index("-map") + 1] == "0:V:0"

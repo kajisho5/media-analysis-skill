@@ -159,7 +159,7 @@ observation; `status` of the response is `ok`, `partial` or `error`. Full refere
 | `scene_detection` | `media-analysis/scenes` | ffmpeg `scdet` | visual cuts with score; intervals between them. Not semantic scenes |
 | `timing` | `media-analysis/timing` | ffprobe | per-stream packet timestamps, gaps, A/V duration mismatch, A/V start offset |
 | `noise_floor` | `media-analysis/noise` | ffmpeg `astats` | short-window RMS → noise floor (p10), signal level (p95), no-reference SNR estimate; one channel or all |
-| `edit_style` | `media-analysis/style` | ffmpeg `scdet`, `ebur128`, `silencedetect` | editing-style profile: cuts per minute, shot-length distribution (frames and seconds), soft-subtitle frequency / coverage / position, loudness, silence share; `media-analysis style diff` compares two profiles |
+| `edit_style` | `media-analysis/style` | ffmpeg `scdet`, `ebur128`, `silencedetect` | editing-style profile: cuts per minute, shot-length distribution (frames and seconds), soft and burned-in subtitle frequency / coverage / position (burned-in: also text height, band / outline; ffmpeg `edgedetect`, no OCR), loudness, silence share; `media-analysis style diff` compares two profiles |
 
 Workflow commands built on these kinds (CLI only, not analysis kinds: they read a folder and write an index, which one
 request cannot express):

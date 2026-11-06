@@ -45,15 +45,17 @@ against the code, a command run or the GitHub API on that date; anything that co
   | `media-analysis/style` | `edit_style` | `measure.video.edit_style` (ADR-030, roadmap step 7) |
 
   All 12 `provides` entries are lifecycle `EXPERIMENTAL`. Required environment capabilities (`capability_names`):
-  `ffmpeg`, `ffprobe`, `filter:astats`, `filter:ebur128`, `filter:scdet`, `filter:silencedetect`.
+  `ffmpeg`, `ffprobe`, `filter:astats`, `filter:ebur128`, `filter:edgedetect`, `filter:scdet`, `filter:silencedetect`.
 - Acceptance measurements (ADR-029, roadmap step 3): `noise_floor` (window-RMS noise floor / signal level /
   no-reference SNR estimate, one channel or all) for voice-enhance-skill's ISOLATE / BLEED_REDUCE acceptance, and
   `timing.av_start_offset` (audio vs video start time, ITU-R BT.1359-1 45 ms default tolerance) for remux / dubbing.
-  `timing`'s `algorithm_version` is `"2"`, `noise`'s `"1"`, every other analyzer's `"1"`.
+  `timing`'s and `style`'s `algorithm_version` is `"2"`, every other analyzer's `"1"`.
 - Editing-style profile (ADR-030, roadmap step 7): `edit_style` (cuts per minute, shot lengths in frames / seconds and
   their distribution, soft-subtitle events / coverage / position, loudness, silence share); `media-analysis style
   profile <input> --out <file>` saves it, `media-analysis style diff <ref> <cand>` compares two profiles per metric.
-  Burned-in subtitles and music-bed presence are listed as `unmeasured`.
+  Burned-in subtitles are measured since ADR-033 (roadmap step 10: coverage, switches per minute, position, text height,
+  regions / approximate characters, band / outline, from an edge map; no OCR); music-bed presence is listed as
+  `unmeasured`.
 - Errors: 12 codes with exit codes 2–13 (`INVALID_INPUT` … `CACHE_MISS`), each with a class `FATAL` / `RETRYABLE` /
   `BLOCKED` (ADR-023). Execution is `local_subprocess`, ffmpeg / ffprobe found by PATH lookup only, no shell, no
   network, no AI. Request denylist (recursive, case-insensitive): `command argv args shell cmd exec filter_complex
@@ -86,9 +88,9 @@ against the code, a command run or the GitHub API on that date; anything that co
 - No other caller found in the sibling checkouts; whether anything outside them calls it is **unverified**.
 
 ## Tests and CI
-- `python -m pytest -q`: **129 passed** locally on 2026-11-06 (Python 3.11, FFmpeg 6.1.1, Linux) from 98 test
-  functions — collected per file: `test_contract.py` 43, `test_integration.py` 42, `test_unit.py` 42, `test_evals.py` 2.
-- `python evals/run.py` 14/14 measurement evals; `python evals/contract_evals.py` 17/17 contract evals;
+- `python -m pytest -q`: **133 passed** locally on 2026-11-06 (Python 3.11, FFmpeg 6.1.1, Linux) from 102 test
+  functions — collected per file: `test_contract.py` 43, `test_integration.py` 43, `test_unit.py` 45, `test_evals.py` 2.
+- `python evals/run.py` 15/15 measurement evals; `python evals/contract_evals.py` 17/17 contract evals;
   `python -m pyflakes src tests evals` clean.
 - `.github/workflows/tests.yml` (push to main, every PR), real FFmpeg on every job:
   Ubuntu Python 3.9 (pinned to `ubuntu-24.04`, which still has 3.9), Ubuntu 3.11, Windows 3.11, macOS 3.11. Each job
@@ -105,7 +107,7 @@ against the code, a command run or the GitHub API on that date; anything that co
 - No MCP transport (ADR-010: not before a consumer needs one).
 
 ## NOT DONE / PLANNED
-See `ECOSYSTEM_ROADMAP.md`. Steps 1–3 and 7–9 are done (step 3: `noise_floor` and `timing.av_start_offset`, ADR-029). Still
+See `ECOSYSTEM_ROADMAP.md`. Steps 1–3 and 7–10 are done (step 3: `noise_floor` and `timing.av_start_offset`, ADR-029). Still
 not measured by anyone, recorded in ADR-029: a reverberation measure (voice-enhance DEREVERB) and picture sharpness /
 exposure (video-production-agent take selection).
 
