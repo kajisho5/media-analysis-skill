@@ -54,6 +54,11 @@ Engine options: `--timeout S`, `--max-analysis-calls N`, `--max-total-seconds S`
 --orientation portrait --max-duration 10 --json` searches it. `--tags` takes `{"<relative path>": ["tag", ...]}` from
 the caller (this Skill holds no model); ADR-031.
 
+`media-analysis highlights talk.mp4 --transcript talk.transcript.json [--signals reactions.json] --keyword launch
+--json` lists highlight candidates: spans of whole sentences (start / end on sentence boundaries), 15–60 s by default,
+with a score and reasons (energy lift, applause / laughter spans the caller passes, keyword density, speaker changes).
+It never cuts; ADR-032.
+
 Unknown kinds, unknown parameters, out-of-range values and any `command` / `argv` field are rejected with `INVALID_INPUT`.
 
 ## AnalysisRequest (structured input)

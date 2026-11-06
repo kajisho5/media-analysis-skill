@@ -54,7 +54,8 @@ Analyzers: `ProbeAnalyzer` (media_probe), `StreamAnalyzer` (stream_layout), `Vid
 (scene_detection), `TimingAnalyzer` (duration, timing), `NoiseAnalyzer` (noise_floor), `StyleAnalyzer` (edit_style). The registry is a literal list; there is no plugin loader.
 
 `library.py` (ADR-031) is a workflow on top of the engine, not an analyzer: it runs `media_probe` / `scene_detection` /
-`loudness` per clip of a folder and keeps the results in one index file inside the workspace.
+`loudness` per clip of a folder and keeps the results in one index file inside the workspace. `highlights.py` (ADR-032) measures windowed RMS of
+one audio stream (the `noise_floor` method) and scores runs of transcript sentences; it writes nothing.
 
 ## Determinism
 

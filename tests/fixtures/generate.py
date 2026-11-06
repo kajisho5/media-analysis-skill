@@ -22,6 +22,8 @@ Every fixture has a known construction so expected values in tests and evals are
                   1 kHz tone amplitude 0.2 (-17.0 LUFS) only for t < 4 s (3.2 s trailing silence), and an SRT stream of
                   4 events of 1 s each, the last one positioned at the top with {\\an8}
   portrait.mp4    2 s, 180x320 (portrait) @30 fps H.264, no audio
+  talk.wav        180 s, mono PCM 8 kHz "talk": 220 Hz tone amplitude 0.05 throughout, raised to 0.2 (+12 dB) for
+                  t = 90..110 s, plus white noise amplitude 0.3 for t = 110.2..113 s (the "applause")
 """
 from __future__ import annotations
 
@@ -67,7 +69,7 @@ def build_all(directory: Path) -> Dict[str, Path]:
         "av": "av.mp4", "video_only": "video_only.mp4", "stereo": "stereo.wav", "mono": "mono.wav", "silence": "silence.wav",
         "multi": "multi.mp4", "loud": "loud.wav", "short": "short.mp4", "scenes": "scenes.mp4", "corrupt": "corrupt.mp4",
         "noisy": "noisy.wav", "cleaned": "cleaned.wav", "av_offset": "av_offset.mkv",
-        "style_a": "style_a.mp4", "style_b": "style_b.mkv", "portrait": "portrait.mp4"}.items()}
+        "style_a": "style_a.mp4", "style_b": "style_b.mkv", "portrait": "portrait.mp4", "talk": "talk.wav"}.items()}
     _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-f", "lavfi", "-i", f"aevalsrc='{TONE_GATED}':s=48000", "-t", "6",
           *X264, "-c:a", "aac", "-shortest", str(f["av"])])
     _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-t", "4", *X264, str(f["video_only"])])
@@ -99,6 +101,10 @@ def build_all(directory: Path) -> Dict[str, Path]:
     _run([*inputs, "-f", "lavfi", "-i", "aevalsrc='0.2*sin(2*PI*1000*t)*lt(t\\,4)':s=48000", "-i", str(srt), "-filter_complex", graph,
           "-map", "[v]", "-map", f"{n}:a", "-map", f"{n + 1}:s", "-t", "7.2", *X264, "-c:a", "pcm_s16le", "-c:s", "srt", str(f["style_b"])])
     _run(["-f", "lavfi", "-i", "testsrc2=size=180x320:rate=30", "-t", "2", *X264, str(f["portrait"])])
+    _run(["-f", "lavfi", "-i", "aevalsrc='0.05*sin(2*PI*220*t)*(1+3*between(t\\,90\\,110))':s=8000",
+          "-f", "lavfi", "-i", "anoisesrc=r=8000:a=0.3:c=white:seed=2", "-filter_complex",
+          "[1:a]volume=0:enable='not(between(t\\,110.2\\,113))'[n];[0:a][n]amix=inputs=2:normalize=0", "-t", "180",
+          "-c:a", "pcm_s16le", str(f["talk"])])
     data = bytearray(f["av"].read_bytes())
     mid = len(data) // 2
     data[mid:mid + 3000] = b"\x00" * 3000

@@ -355,3 +355,27 @@
   per clip (`signalstats`) and no consumer asked for it yet; it can be added as a measured tag later.
 - Contract unchanged (no tool, kind or `provides` entry added); the agent pin is not affected. The agent can call
   `library` as a subprocess like `run`, but it is not part of the `run` protocol.
+
+## ADR-032 Highlight candidates from a long recording, on sentence boundaries
+- Context: roadmap step 9. From a talk or a lecture, an editor wants a short list of spans that work on their own
+  (for a Short or a trailer), with why each one was picked, and boundaries that do not cut a sentence in half.
+  Picking the final clip and cutting it stay with the editor and the editing tools.
+- Decision: `media-analysis highlights`, a CLI workflow in `highlights.py` (not an analysis kind: it needs a
+  transcript and optional signal spans, which a request's primitive parameters cannot carry).
+  - Boundaries come from the transcript, not from audio: sentences end on sentence-final punctuation (Latin and CJK)
+    or a speaker change, using word times when the transcript has them. A candidate is a run of whole sentences, so
+    its start and end are sentence boundaries by construction (and the tests check it).
+  - Signals: speech-energy lift is measured here (window RMS with astats, the `noise_floor` method, over the whole
+    recording; mean of the span minus the recording's median). Keyword density and speaker-change edges come from
+    the transcript. Applause and laughter are taken as spans from the caller: detecting them needs an audio
+    classifier, whose engine and licence roadmap step 5 decides; until then this workflow does not guess them from
+    loudness, and says in `not_measured` when they were not given.
+  - Scoring is a fixed, documented sum (weights and curves in the output itself), chosen so that padding a strong
+    span with weaker sentences lowers its score: energy uses lift / (lift + 6 dB), which never saturates, and keywords
+    are counted per sentence. Speaker edges get a small weight (0.25) so they break ties between equal spans without
+    pulling long spans ahead. The best non-overlapping candidates are returned with their components and reasons.
+    The score orders measured evidence; it is not a judgement that a span is good.
+- Not chosen: aligning boundaries to silences instead of sentences — a pause is not always a sentence end and
+  sentences run on without one; the transcript knows where sentences end. Not chosen: running a speech model to get
+  a transcript — transcription-skill owns that; its output shape is accepted as is.
+- Contract unchanged (no tool, kind or `provides` entry); the agent pin is not affected.
