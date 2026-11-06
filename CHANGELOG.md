@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.11 - 2026-11-06
+
+- B-roll library index and search (roadmap step 8) (#25) (1b0146f)
+
 ## v0.1.10 - 2026-11-06
 
 - Editing-style profile (edit_style) and profile diff (roadmap step 7) (#24) (a4dac01)
