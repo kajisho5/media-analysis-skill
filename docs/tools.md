@@ -188,3 +188,28 @@ allowed input root and the index confined to the workspace.
   `{schema: media-analysis/library-search@1, root, result_count, results[{path, score, matched[{word, tags,
   name_words}], duration, representative_time, tags}], conditions}`. Every condition must hold; every query word must
   prefix-match a tag or a path word. `score` = matched words + exact tag matches; ties by path.
+
+## `highlights` (CLI workflow, ADR-032)
+
+`media-analysis highlights <input> --transcript <file> [--signals <file>] [--keyword W]... [--stream N] [--window S]
+[--min-length S] [--max-length S] [--reaction-window S] [--top N] [--timeout S] [--allowed-input DIR] --json` →
+`{schema: media-analysis/highlight-candidates@1, input, duration, audio_stream_index, sentence_count,
+sentence_boundaries (words | segments), parameters, weights, energy_half_db, signals_used{energy, applause, laughter,
+speaker_changes, keywords}, candidate_count, candidates[], not_measured[{item, reason}], operations[]}`.
+
+- Transcript: `{segments: [{start, end, text, words?: [{start, end, text | word}], speaker_id? | speaker?}]}`.
+  Sentences end at a word / segment whose text ends with `. ! ? … 。 ！ ？` (closing quotes and brackets allowed) and
+  at every speaker change; with word times the boundaries are word times, otherwise segment times.
+- Candidate = a run of whole sentences lasting `min_length`..`max_length` (default 15..60 s): `{rank, start, end,
+  duration, score, components{energy, energy_lift_db, applause, laughter, keywords, keyword_hits, speaker_edges,
+  speaker_turns_inside}, reasons[], first_sentence, last_sentence, sentence_count, text}`. `start` is the first
+  sentence's start and `end` the last sentence's end, so every boundary is a sentence boundary.
+- Score = Σ weight × component, weights `energy` 1, `applause` 1, `laughter` 1, `keywords` 1, `speaker_edges` 0.25:
+  energy = lift / (lift + 6 dB), lift = mean window RMS (dBFS, `--window` 0.5 s, digital silence as −120) of the span
+  minus the recording's median; applause / laughter = 1 when a given span starts inside the candidate or within
+  `--reaction-window` (3 s) after it; keywords = hits per sentence (capped at 1; whole words, phrases and text without
+  spaces by substring); speaker_edges = 0.5 per edge that is a speaker change or the recording's start / end. The
+  best-scoring candidates that do not overlap are returned (ties: earlier, then shorter).
+- `--signals`: `{applause: [{start, end}], laughter: [...], source?}` from the caller; this Skill does not detect
+  applause or laughter. Missing signals, keywords or speaker labels are listed in `not_measured`.
+- The audio stream must exist (`UNSUPPORTED_FORMAT` otherwise). Nothing is cut or written.

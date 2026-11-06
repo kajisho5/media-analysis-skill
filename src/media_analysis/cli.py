@@ -165,6 +165,21 @@ def build_parser() -> argparse.ArgumentParser:
     ls_.add_argument("--limit", type=int)
     _add_common(ls_)
 
+    hl = sub.add_parser("highlights", help="highlight candidates of a long recording on sentence boundaries, with reasons (ADR-032)")
+    hl.add_argument("input")
+    hl.add_argument("--transcript", required=True, help="transcript JSON: {segments: [{start, end, text, words?, speaker_id?}]}")
+    hl.add_argument("--signals", help="caller-supplied spans: {applause: [{start, end}], laughter: [...]}")
+    hl.add_argument("--keyword", action="append", help="keyword or phrase counted in each span (repeatable)")
+    hl.add_argument("--stream", type=int, default=0, help="audio stream ordinal (default 0)")
+    hl.add_argument("--window", type=float, default=0.5, help="energy window in seconds (default 0.5)")
+    hl.add_argument("--min-length", type=float, default=15.0, help="shortest candidate in seconds (default 15)")
+    hl.add_argument("--max-length", type=float, default=60.0, help="longest candidate in seconds (default 60)")
+    hl.add_argument("--reaction-window", type=float, default=3.0, help="seconds after a span in which applause / laughter still counts (default 3)")
+    hl.add_argument("--top", type=int, default=10, help="number of candidates (default 10)")
+    hl.add_argument("--timeout", type=float, help="seconds for the measurement (default 600)")
+    hl.add_argument("--allowed-input", action="append", help="restrict inputs to this root (repeatable)")
+    _add_common(hl)
+
     k = sub.add_parser("conformance", help="run AI-video-production-OS SKILL_SPEC.md section 8 self-checks against this installation")
     _add_common(k)
     return ap
@@ -475,6 +490,27 @@ def _library(args: argparse.Namespace, as_json: bool) -> int:
     return 0
 
 
+def _highlights(args: argparse.Namespace, as_json: bool) -> int:
+    from .highlights import highlight_candidates
+    try:
+        path = PathPolicy(allowed_input_roots=args.allowed_input).resolve_input(args.input)
+        doc = highlight_candidates(str(path), detect(), _load_json(args.transcript),
+                                   signals=_load_json(args.signals) if args.signals else None, keywords=args.keyword or [],
+                                   stream=args.stream, window=args.window, min_length=args.min_length, max_length=args.max_length,
+                                   reaction_window=args.reaction_window, top=args.top, timeout=args.timeout or 600.0)
+    except AnalysisError as e:
+        return _fail(e, as_json)
+    if as_json:
+        emit_json(doc)
+    else:
+        print(f"{doc['candidate_count']} highlight candidates from {doc['sentence_count']} sentences ({doc['input']})")
+        for c in doc["candidates"]:
+            print(f"  #{c['rank']} {c['start']:.2f}-{c['end']:.2f} s ({c['duration']:.1f} s) score {c['score']:.2f}: " + "; ".join(c["reasons"]))
+        for n in doc["not_measured"]:
+            print(f"  not used: {n['item']} ({n['reason']})")
+    return 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     as_json = bool(getattr(args, "json", False))
@@ -494,6 +530,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return _style_diff(args, as_json)
     if args.cmd == "library":
         return _library(args, as_json)
+    if args.cmd == "highlights":
+        return _highlights(args, as_json)
     try:
         engine = _engine(args)
         document = _document(args)

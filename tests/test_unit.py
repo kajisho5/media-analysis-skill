@@ -728,3 +728,46 @@ def test_library_describe_and_search():
     assert [h["path"] for h in search(index, min_height=720)["results"]] == ["beach.mp4"]
     assert search(index, ["ocean", "phone"])["result_count"] == 0                             # every word must match
     assert [h["path"] for h in search(index, max_duration=3)["results"]] == ["phone.mp4"]
+
+
+# ---- highlight candidates (ADR-032)
+def test_highlight_sentences_from_segments_and_words():
+    from media_analysis.highlights import sentences_from_transcript
+    seg = sentences_from_transcript({"segments": [
+        {"start": 0.0, "end": 2.0, "text": "Hello and", "speaker_id": "A"},
+        {"start": 2.0, "end": 4.0, "text": "welcome. Today", "speaker_id": "A"},     # ends mid-sentence: joins the next
+        {"start": 4.0, "end": 6.0, "text": "we start.", "speaker_id": "A"},
+        {"start": 6.0, "end": 8.0, "text": "Question from the floor", "speaker_id": "B"},   # speaker change ends a sentence
+        {"start": 8.0, "end": 9.0, "text": "「本当ですか？」", "speaker_id": "A"}]})
+    assert [(s["start"], s["end"]) for s in seg] == [(0.0, 6.0), (6.0, 8.0), (8.0, 9.0)] and seg[0]["basis"] == "segments"
+    assert [s["speaker"] for s in seg] == ["A", "B", "A"]
+    words = sentences_from_transcript({"segments": [{"start": 0.0, "end": 3.0, "text": "Hi there. Bye.", "words": [
+        {"start": 0.1, "end": 0.5, "text": "Hi"}, {"start": 0.6, "end": 1.0, "text": "there."},
+        {"start": 2.0, "end": 2.6, "word": "Bye."}]}]})
+    assert [(s["start"], s["end"], s["text"]) for s in words] == [(0.1, 1.0, "Hi there."), (2.0, 2.6, "Bye.")] and words[0]["basis"] == "words"
+    for bad in ({}, {"segments": []}, {"segments": [{"start": 1, "end": 0, "text": "x"}]}, {"segments": [{"start": "a", "end": 1, "text": "x"}]}):
+        with pytest.raises(AnalysisError):
+            sentences_from_transcript(bad)
+
+
+def test_highlight_scoring_rules():
+    from media_analysis.highlights import candidates, parse_signals
+    sents = [{"index": i, "start": i * 5.0, "end": i * 5.0 + 4.5, "text": ("Big news!" if i in (4, 5) else "Plain words."),
+              "speaker": "A" if i < 8 else "B", "basis": "segments"} for i in range(10)]
+    levels = [-30.0] * 100
+    for k in range(40, 60):            # 20..30 s, 0.5 s windows: +12 dB
+        levels[k] = -18.0
+    sig = parse_signals({"applause": [{"start": 30.5, "end": 33.0}]})
+    out = candidates(sents, levels=levels, window=0.5, signals=sig, keywords=["news"], min_length=8, max_length=20, reaction_window=3, top=3)
+    best = out[0]
+    assert (best["start"], best["end"]) == (20.0, 29.5) and best["rank"] == 1 and best["components"]["applause"] == 1.0
+    assert best["components"]["keywords"] == 1.0 and abs(best["components"]["energy_lift_db"] - 12.0) < 0.6
+    assert any("applause at 30.5-33.0 s (after the span)" == r for r in best["reasons"])
+    starts = {s["start"] for s in sents}
+    ends = {s["end"] for s in sents}
+    assert all(c["start"] in starts and c["end"] in ends for c in out)                 # sentence boundaries only
+    assert all(not (a["start"] < b["end"] and b["start"] < a["end"]) for a in out for b in out if a is not b)   # no overlap
+    assert [c["score"] for c in out] == sorted((c["score"] for c in out), reverse=True)
+    for bad in ([], {"applause": [{"start": 2, "end": 1}]}, {"cheering": []}):
+        with pytest.raises(AnalysisError):
+            parse_signals(bad)

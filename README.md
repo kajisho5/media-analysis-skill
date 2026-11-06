@@ -168,6 +168,10 @@ request cannot express):
   a B-roll library. Each clip gets measured metadata (duration, resolution, orientation, frame rate, shot count,
   representative frame time, scene type, audio) and measured tags; tags made elsewhere (e.g. by an AI model) are passed
   in with `--tags`. A re-scan measures only new or changed files (ADR-031).
+- `media-analysis highlights <input> --transcript <file> [--signals <file>] [--keyword W]`: highlight candidates of a
+  long recording (a talk, a lecture). Spans of whole sentences, ranked by measured speech energy, caller-supplied
+  applause / laughter spans, keyword density and speaker changes, each with its reasons. Candidates only; nothing is
+  cut (ADR-032).
 
 ## How video-production-agent consumes media-analysis-skill
 

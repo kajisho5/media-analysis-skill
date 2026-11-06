@@ -309,6 +309,56 @@ def test_library_cli(media, tmp_path):
     assert bad.returncode != 0 and json.loads(bad.stdout)["error"]["code"] == "INVALID_INPUT"
 
 
+def _iou(a, b):
+    inter = max(0.0, min(a[1], b[1]) - max(a[0], b[0]))
+    return inter / (max(a[1], b[1]) - min(a[0], b[0]))
+
+
+def test_highlight_candidates_on_talk_fixture(media, tmp_path):
+    """ADR-032 / roadmap step 9: the span the fixture was built around (90..110 s: louder, keywords, applause after it)
+    is among the top candidates, and every candidate starts and ends on a sentence boundary."""
+    from conftest import talk_transcript
+    from media_analysis.capabilities import detect
+    from media_analysis.highlights import highlight_candidates, sentences_from_transcript
+    transcript = talk_transcript()
+    sents = sentences_from_transcript(transcript)
+    starts, ends = {s["start"] for s in sents}, {s["end"] for s in sents}
+    caps = detect()
+    full = highlight_candidates(str(media["talk"]), caps, transcript, signals={"applause": [{"start": 110.2, "end": 113.0}]},
+                                keywords=["breakthrough"], top=5)
+    assert full["sentence_count"] == 36 and full["sentence_boundaries"] == "words" and full["candidate_count"] == 5
+    top3 = [(c["start"], c["end"]) for c in full["candidates"][:3]]
+    assert any(_iou(span, (90.0, 110.0)) >= 0.75 for span in top3), top3
+    best = full["candidates"][0]
+    assert _iou((best["start"], best["end"]), (90.0, 110.0)) >= 0.75 and best["components"]["applause"] == 1.0
+    assert abs(best["components"]["energy_lift_db"] - 12.0) < 1.0 and best["components"]["keyword_hits"] == 4
+    for c in full["candidates"]:
+        assert c["start"] in starts and c["end"] in ends and 15.0 <= c["duration"] <= 60.0 and c["reasons"]
+    assert [n["item"] for n in full["not_measured"]] == ["laughter"]
+    # energy alone (no caller signals, no keywords) still finds it; what was not used is said, not guessed
+    plain = highlight_candidates(str(media["talk"]), caps, transcript, top=3)
+    assert any(_iou((c["start"], c["end"]), (90.0, 110.0)) >= 0.75 for c in plain["candidates"])
+    assert {n["item"] for n in plain["not_measured"]} == {"applause", "laughter", "keywords"}
+    with pytest.raises(AnalysisError) as ei:
+        highlight_candidates(str(media["video_only"]), caps, transcript)
+    assert ei.value.code == "UNSUPPORTED_FORMAT"
+
+
+def test_highlights_cli(media, tmp_path):
+    from conftest import talk_transcript
+    (tmp_path / "t.json").write_text(json.dumps(talk_transcript()), encoding="utf-8")
+    (tmp_path / "s.json").write_text(json.dumps({"applause": [{"start": 110.2, "end": 113.0}]}), encoding="utf-8")
+    r = cli("highlights", str(media["talk"]), "--transcript", "t.json", "--signals", "s.json", "--keyword", "breakthrough", "--top", "3",
+            "--json", cwd=tmp_path)
+    assert r.returncode == 0, r.stderr
+    doc = json.loads(r.stdout)
+    assert doc["schema"] == "media-analysis/highlight-candidates@1" and _iou((doc["candidates"][0]["start"], doc["candidates"][0]["end"]), (90.0, 110.0)) >= 0.75
+    bad = cli("highlights", str(media["talk"]), "--transcript", "missing.json", "--json", cwd=tmp_path)
+    assert bad.returncode != 0 and json.loads(bad.stdout)["error"]["code"] == "FILE_NOT_FOUND"
+    bad = cli("highlights", str(media["talk"]), "--transcript", "t.json", "--min-length", "50", "--max-length", "20", "--json", cwd=tmp_path)
+    assert bad.returncode != 0 and json.loads(bad.stdout)["error"]["code"] == "INVALID_INPUT"
+
+
 def test_cache_hit_skips_analyzer(media, tmp_path):
     e = engine(tmp_path, cache=True)
     first = e.analyze({"asset_id": "asset-1", "input": str(media["av"]), "kind": "loudness"})
