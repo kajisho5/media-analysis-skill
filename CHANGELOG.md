@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.10 - 2026-11-06
+
+- Editing-style profile (edit_style) and profile diff (roadmap step 7) (#24) (a4dac01)
+
 ## v0.1.9 - 2026-11-05
 
 - docs(roadmap): field review steps 5-6 (2026-11-05) (#23) (04b369f)
