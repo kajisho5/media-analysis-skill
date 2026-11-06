@@ -212,6 +212,19 @@ def subtitle_stream_profile(events: List[Dict[str, Any]], duration: Optional[flo
             "positions": positions, "dominant_position": dominant}
 
 
+def subtitle_summary(soft_stream_count: int, streams: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """`present` covers every measured stream (an empty forced track may come before the dialogue track); the summary
+    fields are the first measured stream's."""
+    measured = [x for x in streams if x["status"] == "measured"]
+    first = measured[0] if measured else None
+    return {"soft_stream_count": soft_stream_count, "present": any(x["events"] > 0 for x in measured), "streams": streams,
+            "events_per_minute": first["events_per_minute"] if first else None,
+            "coverage_share": first["coverage_share"] if first else None,
+            "dominant_position": first["dominant_position"] if first else None,
+            "summary_stream_index": first["stream_index"] if first else None,
+            "burned_in": "not_measured"}
+
+
 # ---- audio
 def audio_activity(silences: List[Tuple[float, Optional[float]]], duration: Optional[float]) -> Dict[str, Any]:
     if not duration:
@@ -279,14 +292,7 @@ class StyleAnalyzer(Analyzer):
             else:
                 row.update({"status": "measured", **subtitle_stream_profile(parse_ass_events(r.stdout), duration)})
             streams.append(row)
-        measured = [x for x in streams if x["status"] == "measured"]
-        first = measured[0] if measured else None
-        return {"soft_stream_count": len(subs), "present": bool(measured and first["events"] > 0), "streams": streams,
-                "events_per_minute": first["events_per_minute"] if first else None,
-                "coverage_share": first["coverage_share"] if first else None,
-                "dominant_position": first["dominant_position"] if first else None,
-                "summary_stream_index": first["stream_index"] if first else None,
-                "burned_in": "not_measured"}
+        return subtitle_summary(len(subs), streams)
 
     def _audio(self, ctx: AnalysisContext, p: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str, Any]:
         aus = streams_of(p, "audio")

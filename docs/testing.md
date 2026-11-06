@@ -2,7 +2,7 @@
 
 ```text
 pip install -e . pytest
-python -m pytest -q               # 121 tests: unit + contract + integration + evals
+python -m pytest -q               # 122 tests: unit + contract + integration + evals
 python evals/run.py               # 14 measurement eval cases with expected values and tolerances
 python evals/contract_evals.py    # 17 contract eval cases
 ```
@@ -38,7 +38,7 @@ Nothing binary is committed; fixtures are generated with ffmpeg into a temporary
 contract ↔ registry agreement (no undeclared or unimplemented tools) · AnalysisRequest validation · command / argv
 rejection · kind validation · parameter validation (unknown, type, range, NaN) · probe / stream / video (CFR, VFR,
 unknown) / audio parsers · silence parser + classification · ebur128 parser (incl. `-inf`) · noise window parser, nearest-rank percentile and summary (`-inf` windows → null) · A/V start offset from a probe · integrity status
-(PASS / WARN / FAIL) · scdet parser · edit_style shot / distribution helpers, ASS event positions, profile diff · malformed result · wrong asset / kind / analysis id / source · deterministic
+(PASS / WARN / FAIL) · scdet parser · edit_style shot / distribution helpers, ASS event positions, subtitle presence over every stream, profile diff · malformed result · wrong asset / kind / analysis id / source · deterministic
 identity (parameter order, asset / version / parameter changes) · cache hit / miss / relabel / disabled · cache
 invalidation by asset, algorithm version, parameters · a package (patch) version bump keeps the cache, with the
 measuring version still in `source` · an algorithm version bump invalidates only that analyzer's entries · every

@@ -686,3 +686,15 @@ def test_edit_style_diff():
     with pytest.raises(AnalysisError) as ei:
         diff_profiles({"video": {}}, cand)
     assert ei.value.code == "INVALID_INPUT"
+
+
+def test_edit_style_subtitles_present_over_every_stream():
+    """An empty first text track (e.g. a forced track with no events) must not hide dialogue on a later track."""
+    from media_analysis.analyzers.style import subtitle_stream_profile, subtitle_summary
+    empty = {"stream_index": 2, "status": "measured", **subtitle_stream_profile([], 60.0)}
+    dialogue = {"stream_index": 3, "status": "measured", **subtitle_stream_profile([{"start": 1.0, "end": 2.0, "position": "bottom"}], 60.0)}
+    bitmap = {"stream_index": 4, "status": "not_performed", "reason": "bitmap"}
+    s = subtitle_summary(3, [empty, dialogue, bitmap])
+    assert s["present"] is True and s["summary_stream_index"] == 2 and s["events_per_minute"] == 0.0   # summary: first measured stream
+    assert subtitle_summary(1, [empty])["present"] is False and subtitle_summary(1, [bitmap])["present"] is False
+    assert subtitle_summary(0, [])["summary_stream_index"] is None

@@ -234,6 +234,9 @@ def test_edit_style_cli_profile_and_diff(media, tmp_path):
     assert r.returncode == 0 and doc["schema"] == "media-analysis/edit-style-diff@1" and "video.shot_frames.median" in doc["different"]
     outside = cli("style", "profile", str(media["style_a"]), "--out", str(tmp_path.parent / "escape.json"), "--json", cwd=tmp_path)
     assert outside.returncode != 0 and json.loads(outside.stdout)["error"]["code"] == "PATH_NOT_ALLOWED"
+    (tmp_path / "a_directory.json").mkdir()           # --out naming an existing directory: an error document, not a traceback
+    blocked = cli("style", "profile", str(media["style_a"]), "--out", "a_directory.json", "--json", cwd=tmp_path)
+    assert blocked.returncode != 0 and json.loads(blocked.stdout)["error"]["code"] == "PATH_NOT_ALLOWED" and "Traceback" not in blocked.stderr
     bad = cli("style", "diff", "profiles/a.json", "missing.json", "--json", cwd=tmp_path)
     assert bad.returncode != 0 and json.loads(bad.stdout)["error"]["code"] == "FILE_NOT_FOUND"
 

@@ -430,6 +430,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 _save_json(engine.policy, args.out, response["observations"][0])
             except AnalysisError as e:
                 response = AnalysisEngine.error_response(e)
+            except OSError as e:      # an existing directory, a file in the way, no write permission: still one JSON document
+                response = AnalysisEngine.error_response(AnalysisError("PATH_NOT_ALLOWED", f"cannot write {args.out}: {e}", {"out": args.out}))
     code = exit_code_for(response)
     if as_json:
         emit_json(response)

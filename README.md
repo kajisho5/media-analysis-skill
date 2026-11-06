@@ -67,7 +67,7 @@ media-analysis contract --check saved.json      # does a saved contract still de
 media-analysis conformance --json               # AI-video-production-OS SKILL_SPEC.md section 8 self-checks (forbidden keys, shell-out, workspace confinement, ...)
 ```
 
-Everything runs locally; nothing is uploaded. Eleven analysis kinds, one response schema, exit codes an adapter can
+Everything runs locally; nothing is uploaded. Twelve analysis kinds, one response schema, exit codes an adapter can
 branch on. Details below and in [docs/](docs/).
 
 ## Why a measurement Skill
@@ -244,12 +244,13 @@ caller's retry policy: `FATAL` (never retry unchanged), `RETRYABLE` (bounded ret
   `contract@2` would be a different `schema` value and is refused by `--check` of a `@1` implementation. Stable
   identifiers for the video-production-agent adapter: `skill_id`, `version`, `tools[].tool_id`, `tools[].version`, `tools[].algorithm_version`,
   `tools[].required_capabilities`, `tools[].kinds`, `kind_to_tool`, `errors.exit_codes`.
-- `contract --json` → `provides`: all eleven of this Skill's analysis kinds by their cross-repository Capability id
+- `contract --json` → `provides`: all twelve of this Skill's analysis kinds by their cross-repository Capability id
   (`silence` -> `measure.audio.silence`, `loudness` -> `measure.audio.loudness`, `integrity` -> `measure.audio.integrity`,
   `scene_detection` -> `measure.video.scene_detection`, `timing` -> `measure.video.timing`, `media_probe` ->
   `measure.media.probe`, `stream_layout` -> `measure.media.stream_layout`, `video_format` -> `measure.video.probe`,
   `audio_format` -> `measure.audio.probe`, `duration` -> `measure.media.duration`, `noise_floor` ->
-  `measure.audio.noise_floor`, new in ADR-029 and not in the matrix yet), matching the ids assigned to this
+  `measure.audio.noise_floor`, new in ADR-029, and `edit_style` -> `measure.video.edit_style`, new in ADR-030; neither is
+  in the matrix yet), matching the ids assigned to this
   Skill in [`kajisho5/AI-video-production-OS`](https://github.com/kajisho5/AI-video-production-OS)'s
   `docs/CAPABILITY_MATRIX.md` (see `docs/decisions.md` ADR-022 for why `video_format` gets its own
   `measure.video.probe` id rather than `qc-skill`'s `measure.video.format`: a raw probe and a threshold judgment are

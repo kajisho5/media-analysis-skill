@@ -22,7 +22,8 @@ against the code, a command run or the GitHub API on that date; anything that co
 
 ## CURRENT (implemented, tested, on main)
 - CLI `media-analysis` (`media_analysis.cli:main`), subcommands: `probe`, `analyze`, `run` (canonical machine
-  interface: `run <request.json | -> --json`, one response document on stdout), `doctor`, `contract`, `conformance`.
+  interface: `run <request.json | -> --json`, one response document on stdout), `doctor`, `contract`, `conformance`, `style` (`style profile <input> --out <file>`
+  saves an `edit_style` profile, `style diff <ref> <cand>` compares two; ADR-030).
 - Contract `media-analysis/contract@1` (`schema_versions`: contract / request / response / observation all `1`).
   11 tools, 12 analysis kinds, derived from the analyzer registry:
 
@@ -61,9 +62,10 @@ against the code, a command run or the GitHub API on that date; anything that co
 - `conformance --json` runs the 8 AI-video-production-OS `SKILL_SPEC.md` section 8 checks (ADR-027): 6 PASS,
   2 NOT_IMPLEMENTED as not applicable (`no_clobber_input`: no tool writes output; `dependency_version_ranges`: no
   `dependencies` field is published).
-- Cross-check with the OS's own registry (read-only, AI-video-production-OS `main` `3e5bae1`, 2026-10-30):
-  `registry.CapabilityRegistry.register_contract(<live contract>)` registers 10 providers,
-  `providers_of("measure.audio.loudness")` resolves `media-analysis/loudness`, and `registry.conformance`
+- Cross-check with the OS's own registry (read-only, AI-video-production-OS `main` `c476970`, 2026-11-06):
+  `registry.CapabilityRegistry.register_contract(<live contract>)` registers 12 providers (one per `provides` entry),
+  `providers_of("measure.video.edit_style")` resolves `media-analysis/style` (first checked on `3e5bae1`, 2026-10-30,
+  with 10), `providers_of("measure.audio.loudness")` resolves `media-analysis/loudness`, and `registry.conformance`
   `check_publishes_contract` / `check_lifecycle_declared` both PASS. This is a manual check, not a committed test.
 
 ## Who calls it
@@ -81,8 +83,8 @@ against the code, a command run or the GitHub API on that date; anything that co
 - No other caller found in the sibling checkouts; whether anything outside them calls it is **unverified**.
 
 ## Tests and CI
-- `python -m pytest -q`: **121 passed** locally on 2026-11-06 (Python 3.11, FFmpeg 6.1.1, Linux) from 90 test
-  functions — collected per file: `test_contract.py` 43, `test_integration.py` 38, `test_unit.py` 38, `test_evals.py` 2.
+- `python -m pytest -q`: **122 passed** locally on 2026-11-06 (Python 3.11, FFmpeg 6.1.1, Linux) from 91 test
+  functions — collected per file: `test_contract.py` 43, `test_integration.py` 38, `test_unit.py` 39, `test_evals.py` 2.
 - `python evals/run.py` 14/14 measurement evals; `python evals/contract_evals.py` 17/17 contract evals;
   `python -m pyflakes src tests evals` clean.
 - `.github/workflows/tests.yml` (push to main, every PR), real FFmpeg on every job:
