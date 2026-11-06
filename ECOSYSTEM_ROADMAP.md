@@ -5,7 +5,7 @@ Written from a read-only audit of this repository on 2026-10-30. Each step below
 
 ## Where it stands
 
-Version single-sourced from `pyproject.toml` (#17): `contract --json` → `version` equals the newest tag (0.1.7 at `v0.1.7`, checked 2026-11-05). Cache keyed by per-analyzer algorithm version, so releases no longer empty it (ADR-028). 12 measurement kinds (step 3 added `noise_floor`, step 7 `edit_style`). 98 test functions (129 collected), CI on 3 OSes. STATE.md current (#18).
+Version single-sourced from `pyproject.toml` (#17): `contract --json` → `version` equals the newest tag (0.1.7 at `v0.1.7`, checked 2026-11-05). Cache keyed by per-analyzer algorithm version, so releases no longer empty it (ADR-028). 12 measurement kinds (step 3 added `noise_floor`, step 7 `edit_style`). 100 test functions (131 collected), CI on 3 OSes. STATE.md current (#18).
 
 ## What this repository owns
 
@@ -43,6 +43,10 @@ The agent pins this contract at 0.1.7 (video-production-agent#93, ADR-078), `noi
 - [x] **9. Highlight candidates from long recordings** — from a long video (a talk, a lecture), list self-contained spans as candidates with reasons, using loudness peaks, applause, laughter (spans from step 5 once it lands, or passed in by the caller), speaker changes and transcript keywords, with each start / end on a sentence boundary. Lists candidates only; cutting stays with the editing tools. Done (ADR-032): `media-analysis highlights <input> --transcript <file> [--signals <file>] [--keyword W]` scores every run of whole sentences (15–60 s by default) by measured speech-energy lift (window RMS), applause / laughter spans, keyword density and speaker-change edges, and returns the best non-overlapping ones with reasons. Not done here: applause and laughter are not detected by this Skill — they are taken from the caller (`--signals`) until step 5 adds a detector; without them the output says so in `not_measured` — [#26](https://github.com/kajisho5/media-analysis-skill/pull/26)
   - なぜ要るか：長い講演から、単独で成り立つ見せ場を理由付きで素早く拾える
   - Done when: on a fixture, the span marked as the highlight is among the top candidates, and every candidate's boundaries fall on sentence boundaries
+
+- [x] **10. Burned-in subtitle measurement** — measure `edit_style`'s `subtitles.burned_in` (until now `not_measured`): sample frames at a fixed interval, find the text areas in the picture, and report the share of the running time with subtitles on screen, subtitle switches per minute, position (top / middle / bottom and left / right), text height relative to the frame, text areas / approximate characters per frame, and a band or outline behind the text where it can be told; `style diff` compares them. Done (ADR-033): `edit_style` (algorithm version 2, parameter `burned_in_interval`, default 1 s, 0 = off) finds text-like lines from an ffmpeg `edgedetect` edge map and measures all of these on its own (no OCR, no model); `diff` compares seven numbers and two categories. qc-skill's `video.text_regions` was considered first, but it measures contrast and ink height inside boxes the caller already knows — it does not find where text is — so it is not called; pairing the boxes found here with it for a contrast figure is left as a proposal. Limit: any text in the picture counts, and very detailed pictures can look like text
+  - なぜ要るか：お手本の焼き込み字幕の出し方（どれだけ・どこに・どの大きさで・帯や縁取り）を数値で掴み、自分の編集と比べられる
+  - Done when: on synthetic fixtures with and without burned-in subtitles, coverage, position and text height match the known values within tolerance, and the diff shows the difference
 
 ---
 Engine for every media operation: [ffmpeg-skill](https://github.com/kajisho5/ffmpeg-skill) (3.x, 42 tools, contract_version 2.0; treated as complete, proposals go to Velisa's ROADMAP). Orchestrator: [video-production-agent](https://github.com/kajisho5/video-production-agent).

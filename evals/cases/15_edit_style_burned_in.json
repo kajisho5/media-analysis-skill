@@ -1,0 +1,16 @@
+{
+  "id": "15_edit_style_burned_in",
+  "fixture": "burned",
+  "kind": "edit_style",
+  "parameters": {"burned_in_interval": 0.25},
+  "derivation": "burned.mp4 (ADR-033): glyph-like white bars 24 px tall on a 360 px frame (0.0667) shown 1-4 s at the bottom on a black band, 5-8 s at the bottom with a 2 px black outline (28 px overall, 0.0778), 8.5-9.5 s at the top: 7 of 10 s on screen (coverage 0.7), 3 subtitles in 10 s (18 per minute); sampled every 0.25 s = 40 frames",
+  "expect": [
+    {"path": "data.subtitles.burned_in.frames_sampled", "value": 40},
+    {"path": "data.subtitles.burned_in.coverage_share", "op": "approx", "value": 0.7, "tolerance": 0.05},
+    {"path": "data.subtitles.burned_in.switches_per_minute", "op": "approx", "value": 18.0, "tolerance": 0.01},
+    {"path": "data.subtitles.burned_in.dominant_position", "value": "bottom"},
+    {"path": "data.subtitles.burned_in.text_height_ratio.median", "op": "approx", "value": 0.0667, "tolerance": 0.01},
+    {"path": "data.subtitles.burned_in.text_height_ratio.max", "op": "approx", "value": 0.0778, "tolerance": 0.01},
+    {"path": "data.subtitles.present", "value": false}
+  ]
+}

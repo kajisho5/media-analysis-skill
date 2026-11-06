@@ -18,7 +18,7 @@ and the contract disagree.
 | `media-analysis/integrity` | `integrity` | ffprobe, ffmpeg | probe + ffmpeg full decode `-f null -` + `-show_packets` |
 | `media-analysis/scenes` | `scene_detection` | ffprobe, ffmpeg, filter:scdet | probe + ffmpeg `-vf scdet,metadata=print -f null -` |
 | `media-analysis/noise` | `noise_floor` | ffprobe, ffmpeg, filter:astats | probe + ffmpeg `-af [pan,]asetnsamples,astats=reset=1,ametadata=print -f null -` |
-| `media-analysis/style` | `edit_style` | ffprobe, ffmpeg, filter:scdet, filter:ebur128, filter:silencedetect | probe + ffmpeg `-vf scdet,metadata=print -f null -` + each text subtitle stream `-c:s ass -f ass -` (stdout) + `-af ebur128,silencedetect -f null -` |
+| `media-analysis/style` | `edit_style` | ffprobe, ffmpeg, filter:scdet, filter:ebur128, filter:silencedetect, filter:edgedetect | probe + ffmpeg `-vf scdet,metadata=print -f null -` + each text subtitle stream `-c:s ass -f ass -` (stdout) + `-af ebur128,silencedetect -f null -` + frames `fps,scale,edgedetect,hstack -f rawvideo -` (stdout) |
 
 Every analyzer runs ffprobe at most once per request (shared context). Stream ordinals (`stream` parameter) follow
 ffmpeg's `0:v:N` / `0:a:N` numbering; attached pictures (cover art) are not video streams.
@@ -146,10 +146,22 @@ method, measurement` (ADR-029).
   middle, top}, dominant_position}]`, and the first measured stream's `events_per_minute, coverage_share,
   dominant_position` (`summary_stream_index`). Text streams (SubRip, ASS / SSA, mov_text, WebVTT) are read as ASS;
   the position of an event is its style's `Alignment`, overridden by `\an` / `\a` and by `\pos` / `\move` (y / PlayResY:
-  top third, middle, bottom third). Bitmap streams (PGS, DVD) are `not_performed`. `burned_in` is always `not_measured`.
+  top third, middle, bottom third). Bitmap streams (PGS, DVD) are `not_performed`.
+  `burned_in` (ADR-033, parameter `burned_in_interval`, default 1.0 s, 0 = off → `not_performed`): `status, interval,
+  frames_sampled, frames_with_text, present, coverage_share` (share of sampled frames with text), `switches,
+  switches_per_minute` (text appearing, or its regions moving / changing in number), `positions{vertical{top, middle,
+  bottom}, horizontal{left, center, right}}` (per region and frame), `dominant_position`, `text_height_ratio{median,
+  min, max}` (text height over frame height, outline included), `regions_per_frame{mean, max}`,
+  `approx_chars_per_frame{median, max}` (width / 0.55 line heights: an estimate), `band_share` / `outline_share` (share
+  of regions with a box behind the text / a rim around it, among those where it could be told), `analysis_width,
+  analysis_height, stream_index, method`. Frames are scaled to 480 px wide; an edge map (`edgedetect`) gives rows
+  with many separate edge runs (text lines, 2–20 % of the height), whose edge columns, joined across word-sized gaps,
+  are regions. No OCR: any text in the picture counts, and very detailed pictures can look like text.
 - `audio`: `status, stream_index, stream_ordinal, duration, integrated_lufs, loudness_range_lu, true_peak_dbtp,
   integrated_below_absolute_gate, silence_threshold_db, silence_min_duration, silence_share, active_share,
   longest_silence, silence_count`, `music_bed` (always `not_measured`).
+- The diff also compares `subtitles.burned_in.{coverage_share, switches_per_minute, text_height_ratio.median,
+  regions_per_frame.mean, approx_chars_per_frame.median, band_share, outline_share}` and `{present, dominant_position}`.
 - `media-analysis style diff <reference> <candidate> --json` → `{schema: media-analysis/edit-style-diff@1, direction:
   "candidate - reference", compared, different[], items[{metric, status, reference, candidate, difference, relative,
   equal}]}`; a metric missing on either side is `status: unavailable` with `missing_in`, never 0. Inputs may be a

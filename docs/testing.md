@@ -2,8 +2,8 @@
 
 ```text
 pip install -e . pytest
-python -m pytest -q               # 129 tests: unit + contract + integration + evals
-python evals/run.py               # 14 measurement eval cases with expected values and tolerances
+python -m pytest -q               # 131 tests: unit + contract + integration + evals
+python evals/run.py               # 15 measurement eval cases with expected values and tolerances
 python evals/contract_evals.py    # 17 contract eval cases
 ```
 
@@ -34,13 +34,15 @@ Nothing binary is committed; fixtures are generated with ffmpeg into a temporary
 | `style_b.mkv` | shots of 10, 10, 20, 30, 30, 40, 40 frames @25 fps; tone (−17 LUFS) for t < 4 s, then silence; SRT with four 1 s events, one `{\an8}` | edit_style: median 30 frames, 6 cuts, subtitles 33.3/min, 3 bottom + 1 top; style diff |
 | `portrait.mp4` | 2 s 180x320 @30 fps, no audio | library: portrait orientation search |
 | `talk.wav` | 180 s mono 8 kHz: 220 Hz tone 0.05, +12 dB for 90–110 s, white noise 0.3 for 110.2–113 s; transcript `conftest.talk_transcript()` (36 sentences with word times, keyword in 90–110 s, speaker B from 150 s) | highlights: 90–110 s ranked first, boundaries on sentences |
+| `burned.mp4` | 10 s 640x360 grey with glyph-like white bars 24 px tall: 1–4 s bottom on a black band, 5–8 s bottom with a 2 px outline, 8.5–9.5 s top | edit_style burned-in: coverage 0.7, 18 switches / min, bottom, text height 0.0667 / 0.0778, band and outline |
+| `clean.mp4` | `burned.mp4` without the bars | burned-in: none; diff against `burned.mp4` |
 
 ## Unit tests (`tests/test_unit.py`, no ffmpeg)
 
 contract ↔ registry agreement (no undeclared or unimplemented tools) · AnalysisRequest validation · command / argv
 rejection · kind validation · parameter validation (unknown, type, range, NaN) · probe / stream / video (CFR, VFR,
 unknown) / audio parsers · silence parser + classification · ebur128 parser (incl. `-inf`) · noise window parser, nearest-rank percentile and summary (`-inf` windows → null) · A/V start offset from a probe · integrity status
-(PASS / WARN / FAIL) · scdet parser · edit_style shot / distribution helpers, ASS event positions, subtitle presence over every stream, profile diff · library description / measured tags, external tags parsing, search conditions · highlight sentence splitting (segments, words, speaker change, CJK punctuation), scoring rules, signal parsing · malformed result · wrong asset / kind / analysis id / source · deterministic
+(PASS / WARN / FAIL) · scdet parser · edit_style shot / distribution helpers, ASS event positions, subtitle presence over every stream, profile diff · library description / measured tags, external tags parsing, search conditions · highlight sentence splitting (segments, words, speaker change, CJK punctuation), scoring rules, signal parsing · burned-in text lines / regions / band / summary on synthetic frames · malformed result · wrong asset / kind / analysis id / source · deterministic
 identity (parameter order, asset / version / parameter changes) · cache hit / miss / relabel / disabled · cache
 invalidation by asset, algorithm version, parameters · a package (patch) version bump keeps the cache, with the
 measuring version still in `source` · an algorithm version bump invalidates only that analyzer's entries · every

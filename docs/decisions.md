@@ -379,3 +379,36 @@
   sentences run on without one; the transcript knows where sentences end. Not chosen: running a speech model to get
   a transcript — transcription-skill owns that; its output shape is accepted as is.
 - Contract unchanged (no tool, kind or `provides` entry); the agent pin is not affected.
+
+## ADR-033 Burned-in subtitles in `edit_style`, from an edge map
+- Context: roadmap step 10. ADR-030 left `subtitles.burned_in` as `not_measured`. Most finished edits on video
+  platforms carry their subtitles drawn into the picture, so a style profile without them misses the habit that is
+  easiest to see: how much of the time text is on screen, where, how large, and whether it sits on a band or has an
+  outline.
+- Considered first: qc-skill's `video.text_regions` as an optional dependency. It measures contrast and ink height
+  inside boxes the caller names; it does not locate text. Using it would still need the location from somewhere, so
+  the location is measured here and qc-skill is not called. Feeding the boxes found here to it for a WCAG contrast
+  figure is a possible follow-up (a caller can do it today with the reported boxes' positions and sizes).
+- Decision: `burnin.py`, called by the `style` analyzer, only ffmpeg on PATH as before.
+  - One ffmpeg pass samples a frame every `burned_in_interval` seconds (default 1 s; 0 turns it off), scales it to
+    480 px wide, and writes the grey picture and its `edgedetect` edge map side by side to stdout (raw bytes, no file).
+  - Text rows are rows whose edge map has at least 8 separate edge runs (glyph strokes give many short vertical
+    edges; a horizon, a box border or a picture edge gives a few long ones). Runs of text rows 2–20 % of the frame
+    high are lines; within a line, edge columns joined across gaps shorter than 1.5 line heights are regions (words
+    of a subtitle join; two subtitles side by side stay apart).
+  - Per region: position by thirds; text height = rows around the line where a tenth of the region's pixels are far
+    (40 levels) from the background level next to it — ink plus outline — over the frame height (the edge map is
+    blurred by edgedetect's smoothing, so the picture gives the tighter figure); approximate characters = width /
+    (0.55 × height); band = the strip just above / below differs from the picture further out by 24 levels and is
+    flat; outline = among the pixels far from the background, at least 8 % lie on the other side of it from the ink.
+  - Per recording: coverage = sampled frames with text / frames; switches = text appearing, or its regions moving by
+    more than half a line height or changing in number; per minute over the duration; position counts; medians.
+  - `style diff` compares the new numbers and `present` / `dominant_position`.
+- Limits, stated in the output's `method` and in docs/tools.md: no OCR, so any text in the picture counts (signs,
+  captions, a lower third) and very detailed pictures (foliage, fine patterns, a test card's digits) can read as text;
+  timing resolution is the sampling interval; coverage is a share of sampled frames. A model-based text detector
+  would be more selective but is a model, which this Skill does not run.
+- Versions: `style` `algorithm_version` "1" → "2" (`burned_in` changes from a string to an object, ADR-028 rule), so
+  cached `edit_style` Observations are recomputed once. Contract `@1` additive: one parameter, `filter:edgedetect` in
+  `style`'s required capabilities and in `capability_names`, the tool description. video-production-agent's
+  `check_contract` accepts it unchanged; a re-pin shows the new parameter and capability.

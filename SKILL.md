@@ -44,7 +44,7 @@ Engine options: `--timeout S`, `--max-analysis-calls N`, `--max-total-seconds S`
 | `scene_detection` | `stream` (0), `threshold` (10, scdet score 0-100), `min_scene_duration` (0.5 s) |
 | `timing` | `gap_factor` (2.5 × median interval), `av_mismatch_tolerance` (0.1 s), `av_start_offset_tolerance` (0.045 s) |
 | `noise_floor` | `stream` (0), `channel` (-1 = all channels, else one channel), `window` (0.05 s), `noise_percentile` (10), `signal_percentile` (95) |
-| `edit_style` | `video_stream` (0), `audio_stream` (0), `threshold` (10, scdet score), `min_shot_duration` (0.25 s), `silence_threshold_db` (-50), `silence_min_duration` (0.5 s) |
+| `edit_style` | `video_stream` (0), `audio_stream` (0), `threshold` (10, scdet score), `min_shot_duration` (0.25 s), `silence_threshold_db` (-50), `silence_min_duration` (0.5 s), `burned_in_interval` (1.0 s between sampled frames; 0 = off) |
 
 `media-analysis style profile <input> --out profile.json` saves an `edit_style` Observation; `media-analysis style diff
 <reference.json> <candidate.json> --json` prints the metric-by-metric difference (candidate − reference, ADR-030).

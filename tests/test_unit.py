@@ -771,3 +771,41 @@ def test_highlight_scoring_rules():
     for bad in ([], {"applause": [{"start": 2, "end": 1}]}, {"cheering": []}):
         with pytest.raises(AnalysisError):
             parse_signals(bad)
+
+
+# ---- burned-in subtitles (ADR-033)
+def _synthetic_frame(w, h, y0, y1, x0, n, bg=128, ink=255, band=None):
+    luma = bytearray([bg] * (w * h))
+    edges = bytearray(w * h)
+    if band is not None:
+        by0, by1, bx0, bx1, level = band
+        for y in range(by0, by1):
+            luma[y * w + bx0:y * w + bx1] = bytes([level]) * (bx1 - bx0)
+    for y in range(y0, y1):
+        for i in range(n):
+            x = x0 + i * 5
+            luma[y * w + x:y * w + x + 2] = bytes([ink, ink])
+            edges[y * w + x] = 255
+            edges[y * w + x + 2] = 255
+    return bytes(luma), bytes(edges)
+
+
+def test_burned_in_regions_and_summary():
+    from media_analysis.analyzers.burnin import analysis_size, frame_regions, summarise
+    assert analysis_size(1920, 1080) == (480, 270) and analysis_size(320, 180) == (320, 180)
+    w, h = 200, 100
+    luma, edges = _synthetic_frame(w, h, 80, 88, 60, 16)                 # 8 rows of 100, bottom, centred
+    regs = frame_regions(luma, edges, w, h)
+    assert len(regs) == 1 and regs[0]["vertical"] == "bottom" and regs[0]["horizontal"] == "center"
+    assert regs[0]["height_ratio"] == 0.08 and regs[0]["height_basis"] == "pixels" and regs[0]["band"] is False
+    banded = frame_regions(*_synthetic_frame(w, h, 80, 88, 60, 16, band=(74, 94, 50, 150, 0)), w, h)
+    assert banded[0]["band"] is True
+    top = frame_regions(*_synthetic_frame(w, h, 10, 18, 60, 16), w, h)
+    assert top[0]["vertical"] == "top"
+    empty = frame_regions(bytes([128] * (w * h)), bytes(w * h), w, h)
+    assert empty == []
+    s = summarise([regs, regs, [], top, top, []], 0.5, 3.0)
+    assert s["coverage_share"] == round(4 / 6, 6) and s["switches"] == 2 and s["switches_per_minute"] == 40.0
+    assert s["positions"]["vertical"] == {"top": 2, "middle": 0, "bottom": 2} and s["dominant_position"] == "bottom"
+    none = summarise([[], []], 1.0, 2.0)
+    assert none["present"] is False and none["text_height_ratio"] is None and none["band_share"] is None

@@ -27,22 +27,27 @@ class RunResult:
     stdout: str
     stderr: str
     seconds: float
+    stdout_bytes: Optional[bytes] = None     # set instead of stdout when run with binary=True
 
 
 def which(name: str) -> Optional[str]:
     return shutil.which(name)
 
 
-def run_argv(argv: List[str], timeout: Optional[float]) -> RunResult:
+def run_argv(argv: List[str], timeout: Optional[float], binary: bool = False) -> RunResult:
     """Run an executable with an argv list. Raises ANALYZER_TIMEOUT on timeout, ANALYZER_UNAVAILABLE when the
-    executable cannot be started."""
+    executable cannot be started. With binary=True stdout is returned as bytes (`stdout_bytes`), stderr as text."""
     for a in argv:
         if not isinstance(a, str) or "\x00" in a:
             raise AnalysisError("INVALID_INPUT", "argument contains NUL or is not a string")
     t0 = time.monotonic()
     try:
-        proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, errors="replace", env=_clean_env(), **_group_kwargs())
+        if binary:
+            proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    env=_clean_env(), **_group_kwargs())
+        else:
+            proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    text=True, errors="replace", env=_clean_env(), **_group_kwargs())
     except FileNotFoundError:
         raise AnalysisError("ANALYZER_UNAVAILABLE", f"executable not found: {os.path.basename(argv[0])}")
     try:
@@ -50,6 +55,8 @@ def run_argv(argv: List[str], timeout: Optional[float]) -> RunResult:
     except subprocess.TimeoutExpired:
         _kill_group(proc)
         raise AnalysisError("ANALYZER_TIMEOUT", f"{os.path.basename(argv[0])} exceeded {timeout}s", {"timeout": timeout})
+    if binary:
+        return RunResult(proc.returncode, "", (err or b"").decode("utf-8", "replace"), round(time.monotonic() - t0, 3), out or b"")
     return RunResult(proc.returncode, out or "", err or "", round(time.monotonic() - t0, 3))
 
 

@@ -24,6 +24,11 @@ Every fixture has a known construction so expected values in tests and evals are
   portrait.mp4    2 s, 180x320 (portrait) @30 fps H.264, no audio
   talk.wav        180 s, mono PCM 8 kHz "talk": 220 Hz tone amplitude 0.05 throughout, raised to 0.2 (+12 dB) for
                   t = 90..110 s, plus white noise amplitude 0.3 for t = 110.2..113 s (the "applause")
+  burned.mp4      10 s, 640x360 @25 grey (0x808080) with burned-in "subtitles" drawn as rows of white glyph-like bars
+                  (6 px wide, 5 px apart, 24 px tall = 0.0667 of the height): 1-4 s bottom (y 298) on a black band,
+                  5-8 s bottom with a 2 px black outline (28 px tall overall = 0.0778), 8.5-9.5 s top (y 30), plain.
+                  On screen 7 of 10 s (coverage 0.7), 3 subtitles (18 per minute), 3 of 4 sampled seconds at the bottom
+  clean.mp4       burned.mp4 without the subtitles (the same grey picture)
 """
 from __future__ import annotations
 
@@ -62,6 +67,21 @@ def _shots_video(shots):
     return inputs, ";".join(chains) + ";" + concat
 
 
+def _glyph_bars(x0, y, n, enable, outline=False):
+    """A row of n white bars standing in for one line of text, shown while `enable` is true."""
+    out = []
+    for i in range(n):
+        x = x0 + i * 11
+        if outline:
+            out.append(f"drawbox=x={x - 2}:y={y - 2}:w=10:h=28:color=black:t=fill:enable='{enable}'")
+        out.append(f"drawbox=x={x}:y={y}:w=6:h=24:color=white:t=fill:enable='{enable}'")
+    return out
+
+
+BURNED_IN = ",".join(["drawbox=x=150:y=286:w=340:h=48:color=black:t=fill:enable='between(t,1,4)'", *_glyph_bars(170, 298, 28, "between(t,1,4)"),
+                      *_glyph_bars(220, 298, 18, "between(t,5,8)", outline=True), *_glyph_bars(250, 30, 12, "between(t,8.5,9.5)")])
+
+
 def build_all(directory: Path) -> Dict[str, Path]:
     d = Path(directory)
     d.mkdir(parents=True, exist_ok=True)
@@ -69,7 +89,8 @@ def build_all(directory: Path) -> Dict[str, Path]:
         "av": "av.mp4", "video_only": "video_only.mp4", "stereo": "stereo.wav", "mono": "mono.wav", "silence": "silence.wav",
         "multi": "multi.mp4", "loud": "loud.wav", "short": "short.mp4", "scenes": "scenes.mp4", "corrupt": "corrupt.mp4",
         "noisy": "noisy.wav", "cleaned": "cleaned.wav", "av_offset": "av_offset.mkv",
-        "style_a": "style_a.mp4", "style_b": "style_b.mkv", "portrait": "portrait.mp4", "talk": "talk.wav"}.items()}
+        "style_a": "style_a.mp4", "style_b": "style_b.mkv", "portrait": "portrait.mp4", "talk": "talk.wav",
+        "burned": "burned.mp4", "clean": "clean.mp4"}.items()}
     _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-f", "lavfi", "-i", f"aevalsrc='{TONE_GATED}':s=48000", "-t", "6",
           *X264, "-c:a", "aac", "-shortest", str(f["av"])])
     _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-t", "4", *X264, str(f["video_only"])])
@@ -105,6 +126,8 @@ def build_all(directory: Path) -> Dict[str, Path]:
           "-f", "lavfi", "-i", "anoisesrc=r=8000:a=0.3:c=white:seed=2", "-filter_complex",
           "[1:a]volume=0:enable='not(between(t\\,110.2\\,113))'[n];[0:a][n]amix=inputs=2:normalize=0", "-t", "180",
           "-c:a", "pcm_s16le", str(f["talk"])])
+    for key, extra in (("burned", ["-vf", BURNED_IN]), ("clean", [])):
+        _run(["-f", "lavfi", "-i", "color=c=0x808080:size=640x360:rate=25", *extra, "-t", "10", *X264, str(f[key])])
     data = bytearray(f["av"].read_bytes())
     mid = len(data) // 2
     data[mid:mid + 3000] = b"\x00" * 3000
