@@ -7,6 +7,8 @@ from .integrity import IntegrityAnalyzer
 from .scenes import SceneAnalyzer
 from .timing import TimingAnalyzer
 from .noise import NoiseAnalyzer
+from .style import StyleAnalyzer
 
 __all__ = ["Analyzer", "AnalysisContext", "ProbeAnalyzer", "StreamAnalyzer", "VideoAnalyzer", "AudioAnalyzer",
-           "SilenceAnalyzer", "LoudnessAnalyzer", "IntegrityAnalyzer", "SceneAnalyzer", "TimingAnalyzer", "NoiseAnalyzer"]
+           "SilenceAnalyzer", "LoudnessAnalyzer", "IntegrityAnalyzer", "SceneAnalyzer", "TimingAnalyzer", "NoiseAnalyzer",
+           "StyleAnalyzer"]

@@ -127,6 +127,20 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--check", metavar="FILE", help="validate a contract document (file, or - for stdin) against the implementation; exit 0 only when identical")
     _add_common(c)
 
+    st = sub.add_parser("style", help="editing-style profile of an edit (edit_style), saved as JSON, and a metric-by-metric diff of two profiles")
+    stsub = st.add_subparsers(dest="style_cmd", required=True)
+    sp = stsub.add_parser("profile", help="measure edit_style of one file; --out saves the Observation (profile + provenance)")
+    sp.add_argument("input")
+    sp.add_argument("--out", help="file to save the profile Observation to (inside the workspace)")
+    sp.add_argument("--param", action="append", metavar="KEY=VALUE", help="edit_style parameter (JSON value), repeatable")
+    sp.add_argument("--asset-id", default="asset-1")
+    _add_engine_opts(sp)
+    _add_common(sp)
+    sd = stsub.add_parser("diff", help="compare two saved profiles: candidate minus reference, per metric")
+    sd.add_argument("reference", help="profile of the reference edit (a saved profile, Observation or response document)")
+    sd.add_argument("candidate", help="profile of the edit to compare")
+    _add_common(sd)
+
     k = sub.add_parser("conformance", help="run AI-video-production-OS SKILL_SPEC.md section 8 self-checks against this installation")
     _add_common(k)
     return ap
@@ -154,6 +168,8 @@ def _document(args: argparse.Namespace) -> Any:
             raise AnalysisError("INVALID_INPUT", "parameters not accepted by the requested kind(s)", {"fields": unknown})
         return [{"asset_id": args.asset_id, "input": args.input, "kind": kind, "parameters": {k: v for k, v in params.items() if k in PARAMETER_SCHEMAS[kind]},
                  "analysis_id": args.analysis_id, "output_policy": {"round": args.round}, **common} for kind in args.kind]
+    if args.cmd == "style":
+        return {"asset_id": args.asset_id, "input": args.input, "kind": "edit_style", "parameters": _params(args.param), **common}
     if args.cmd == "run":
         try:
             text = _read_stdin_utf8() if args.request == "-" else open(args.request, "r", encoding="utf-8").read()
@@ -331,6 +347,60 @@ def _contract(as_json: bool, check: Optional[str] = None) -> int:
     return 0
 
 
+def _load_json(path: str) -> Any:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except OSError as e:
+        raise AnalysisError("FILE_NOT_FOUND", f"cannot read {path}: {e}")
+    except ValueError as e:
+        raise AnalysisError("INVALID_INPUT", f"{path} is not valid UTF-8 JSON: {e}")
+
+
+def _save_json(policy: PathPolicy, path: str, doc: Any) -> str:
+    """Write one JSON document to a file inside the workspace (atomic replace)."""
+    target = os.path.abspath(path if os.path.isabs(path) else os.path.join(str(policy.workspace), path))
+    folder = policy.resolve_write_dir(os.path.dirname(target))
+    folder.mkdir(parents=True, exist_ok=True)
+    final = folder / os.path.basename(target)
+    fd, tmp = tempfile.mkstemp(dir=str(folder), prefix=".tmp-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh, indent=2, ensure_ascii=False, allow_nan=False)
+            fh.write("\n")
+        os.replace(tmp, str(final))
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+    return str(final)
+
+
+def _style_diff(args: argparse.Namespace, as_json: bool) -> int:
+    from .analyzers.style import diff_profiles
+    try:
+        doc = diff_profiles(_load_json(args.reference), _load_json(args.candidate))
+    except AnalysisError as e:
+        response = AnalysisEngine.error_response(e)
+        if as_json:
+            emit_json(response)
+        else:
+            sys.stderr.write(f"error [{e.code}]: {e.message}\n")
+        return exit_code_for(response)
+    if as_json:
+        emit_json(doc)
+    else:
+        print(f"edit_style diff ({doc['direction']}): {doc['compared']} metrics compared, {len(doc['different'])} differ")
+        for it in doc["items"]:
+            if it["status"] != "compared":
+                print(f"  {it['metric']}: unavailable in {', '.join(it['missing_in'])}")
+            elif "difference" in it:
+                print(f"  {it['metric']}: {it['reference']} -> {it['candidate']} ({it['difference']:+g})")
+            else:
+                print(f"  {it['metric']}: {it['reference']} -> {it['candidate']}" + ("" if it["equal"] else "  (differs)"))
+    return 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     as_json = bool(getattr(args, "json", False))
@@ -346,6 +416,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return _contract(as_json, args.check)
     if args.cmd == "conformance":
         return _conformance(as_json)
+    if args.cmd == "style" and args.style_cmd == "diff":
+        return _style_diff(args, as_json)
     try:
         engine = _engine(args)
         document = _document(args)
@@ -353,6 +425,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         response = AnalysisEngine.error_response(e)
     else:
         response = engine.run(document, dry_run=args.dry_run)
+        if args.cmd == "style" and args.out and response["status"] == "ok" and not args.dry_run:
+            try:
+                _save_json(engine.policy, args.out, response["observations"][0])
+            except AnalysisError as e:
+                response = AnalysisEngine.error_response(e)
+            except OSError as e:      # an existing directory, a file in the way, no write permission: still one JSON document
+                response = AnalysisEngine.error_response(AnalysisError("PATH_NOT_ALLOWED", f"cannot write {args.out}: {e}", {"out": args.out}))
     code = exit_code_for(response)
     if as_json:
         emit_json(response)

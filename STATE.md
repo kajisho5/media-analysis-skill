@@ -22,9 +22,10 @@ against the code, a command run or the GitHub API on that date; anything that co
 
 ## CURRENT (implemented, tested, on main)
 - CLI `media-analysis` (`media_analysis.cli:main`), subcommands: `probe`, `analyze`, `run` (canonical machine
-  interface: `run <request.json | -> --json`, one response document on stdout), `doctor`, `contract`, `conformance`.
+  interface: `run <request.json | -> --json`, one response document on stdout), `doctor`, `contract`, `conformance`, `style` (`style profile <input> --out <file>`
+  saves an `edit_style` profile, `style diff <ref> <cand>` compares two; ADR-030).
 - Contract `media-analysis/contract@1` (`schema_versions`: contract / request / response / observation all `1`).
-  10 tools, 11 analysis kinds, derived from the analyzer registry:
+  11 tools, 12 analysis kinds, derived from the analyzer registry:
 
   | Tool | Kinds | Capability id (`provides`) |
   |---|---|---|
@@ -38,13 +39,18 @@ against the code, a command run or the GitHub API on that date; anything that co
   | `media-analysis/integrity` | `integrity` | `measure.audio.integrity` |
   | `media-analysis/scenes` | `scene_detection` | `measure.video.scene_detection` |
   | `media-analysis/noise` | `noise_floor` | `measure.audio.noise_floor` (ADR-029, roadmap step 3) |
+  | `media-analysis/style` | `edit_style` | `measure.video.edit_style` (ADR-030, roadmap step 7) |
 
-  All 11 `provides` entries are lifecycle `EXPERIMENTAL`. Required environment capabilities (`capability_names`):
+  All 12 `provides` entries are lifecycle `EXPERIMENTAL`. Required environment capabilities (`capability_names`):
   `ffmpeg`, `ffprobe`, `filter:astats`, `filter:ebur128`, `filter:scdet`, `filter:silencedetect`.
 - Acceptance measurements (ADR-029, roadmap step 3): `noise_floor` (window-RMS noise floor / signal level /
   no-reference SNR estimate, one channel or all) for voice-enhance-skill's ISOLATE / BLEED_REDUCE acceptance, and
   `timing.av_start_offset` (audio vs video start time, ITU-R BT.1359-1 45 ms default tolerance) for remux / dubbing.
   `timing`'s `algorithm_version` is `"2"`, `noise`'s `"1"`, every other analyzer's `"1"`.
+- Editing-style profile (ADR-030, roadmap step 7): `edit_style` (cuts per minute, shot lengths in frames / seconds and
+  their distribution, soft-subtitle events / coverage / position, loudness, silence share); `media-analysis style
+  profile <input> --out <file>` saves it, `media-analysis style diff <ref> <cand>` compares two profiles per metric.
+  Burned-in subtitles and music-bed presence are listed as `unmeasured`.
 - Errors: 12 codes with exit codes 2–13 (`INVALID_INPUT` … `CACHE_MISS`), each with a class `FATAL` / `RETRYABLE` /
   `BLOCKED` (ADR-023). Execution is `local_subprocess`, ffmpeg / ffprobe found by PATH lookup only, no shell, no
   network, no AI. Request denylist (recursive, case-insensitive): `command argv args shell cmd exec filter_complex
@@ -56,9 +62,10 @@ against the code, a command run or the GitHub API on that date; anything that co
 - `conformance --json` runs the 8 AI-video-production-OS `SKILL_SPEC.md` section 8 checks (ADR-027): 6 PASS,
   2 NOT_IMPLEMENTED as not applicable (`no_clobber_input`: no tool writes output; `dependency_version_ranges`: no
   `dependencies` field is published).
-- Cross-check with the OS's own registry (read-only, AI-video-production-OS `main` `3e5bae1`, 2026-10-30):
-  `registry.CapabilityRegistry.register_contract(<live contract>)` registers 10 providers,
-  `providers_of("measure.audio.loudness")` resolves `media-analysis/loudness`, and `registry.conformance`
+- Cross-check with the OS's own registry (read-only, AI-video-production-OS `main` `c476970`, 2026-11-06):
+  `registry.CapabilityRegistry.register_contract(<live contract>)` registers 12 providers (one per `provides` entry),
+  `providers_of("measure.video.edit_style")` resolves `media-analysis/style` (first checked on `3e5bae1`, 2026-10-30,
+  with 10), `providers_of("measure.audio.loudness")` resolves `media-analysis/loudness`, and `registry.conformance`
   `check_publishes_contract` / `check_lifecycle_declared` both PASS. This is a manual check, not a committed test.
 
 ## Who calls it
@@ -76,9 +83,9 @@ against the code, a command run or the GitHub API on that date; anything that co
 - No other caller found in the sibling checkouts; whether anything outside them calls it is **unverified**.
 
 ## Tests and CI
-- `python -m pytest -q`: **116 passed** locally on 2026-10-31 (Python 3.11, FFmpeg 6.1.1, Linux) from 85 test
-  functions — collected per file: `test_contract.py` 43, `test_integration.py` 36, `test_unit.py` 35, `test_evals.py` 2.
-- `python evals/run.py` 12/12 measurement evals; `python evals/contract_evals.py` 17/17 contract evals;
+- `python -m pytest -q`: **122 passed** locally on 2026-11-06 (Python 3.11, FFmpeg 6.1.1, Linux) from 91 test
+  functions — collected per file: `test_contract.py` 43, `test_integration.py` 38, `test_unit.py` 39, `test_evals.py` 2.
+- `python evals/run.py` 14/14 measurement evals; `python evals/contract_evals.py` 17/17 contract evals;
   `python -m pyflakes src tests evals` clean.
 - `.github/workflows/tests.yml` (push to main, every PR), real FFmpeg on every job:
   Ubuntu Python 3.9 (pinned to `ubuntu-24.04`, which still has 3.9), Ubuntu 3.11, Windows 3.11, macOS 3.11. Each job
@@ -95,7 +102,7 @@ against the code, a command run or the GitHub API on that date; anything that co
 - No MCP transport (ADR-010: not before a consumer needs one).
 
 ## NOT DONE / PLANNED
-See `ECOSYSTEM_ROADMAP.md`. Steps 1–3 are done (step 3: `noise_floor` and `timing.av_start_offset`, ADR-029). Still
+See `ECOSYSTEM_ROADMAP.md`. Steps 1–3 and 7 are done (step 3: `noise_floor` and `timing.av_start_offset`, ADR-029). Still
 not measured by anyone, recorded in ADR-029: a reverberation measure (voice-enhance DEREVERB) and picture sharpness /
 exposure (video-production-agent take selection).
 

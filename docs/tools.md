@@ -18,6 +18,7 @@ and the contract disagree.
 | `media-analysis/integrity` | `integrity` | ffprobe, ffmpeg | probe + ffmpeg full decode `-f null -` + `-show_packets` |
 | `media-analysis/scenes` | `scene_detection` | ffprobe, ffmpeg, filter:scdet | probe + ffmpeg `-vf scdet,metadata=print -f null -` |
 | `media-analysis/noise` | `noise_floor` | ffprobe, ffmpeg, filter:astats | probe + ffmpeg `-af [pan,]asetnsamples,astats=reset=1,ametadata=print -f null -` |
+| `media-analysis/style` | `edit_style` | ffprobe, ffmpeg, filter:scdet, filter:ebur128, filter:silencedetect | probe + ffmpeg `-vf scdet,metadata=print -f null -` + each text subtitle stream `-c:s ass -f ass -` (stdout) + `-af ebur128,silencedetect -f null -` |
 
 Every analyzer runs ffprobe at most once per request (shared context). Stream ordinals (`stream` parameter) follow
 ffmpeg's `0:v:N` / `0:a:N` numbering; attached pictures (cover art) are not video streams.
@@ -126,3 +127,31 @@ method, measurement` (ADR-029).
   signal itself and `snr_db` is near 0 — a fact about the input, not an error.
 - Digital silence is `-inf` dBFS: a percentile landing on it is `null` and listed in `unmeasurable` (with `snr_db`).
 - Before / after comparisons (a denoiser's acceptance) should use the same parameters on both files.
+
+## `edit_style` (parameters `video_stream, audio_stream, threshold, min_shot_duration, silence_threshold_db, silence_min_duration`)
+
+`profile_schema` (`media-analysis/edit-style@1`), `duration`, `video{...}`, `subtitles{...}`, `audio{...}`,
+`unmeasured[{item, reason}]` (ADR-030).
+
+- `video`: `status` (`measured` / `not_performed` with `reason` when the stream is missing or has no frame rate),
+  `stream_index, stream_ordinal, fps, frame_count` (frames scdet saw), `duration`, `threshold, min_shot_duration,
+  min_shot_frames`, `cut_count, cuts_per_minute, shot_count`, `shot_frames` and `shot_seconds` (`min, p10, p25,
+  median, p75, p90, max, mean`: the median averages the two middle shots, the other percentiles are nearest-rank),
+  `shot_length_histogram[{from_seconds, to_seconds, count}]` (edges 0, 0.5, 1, 2, 4, 8, 16 s, the last open),
+  `shots[{index, start_frame, frames, start, end, seconds}]`. A cut is the frame scdet flags; a cut closer than
+  `min_shot_duration` (rounded to frames) to the previous kept cut is dropped. Shot lengths are frame counts, so the
+  measurement is exact to the frame on hard cuts.
+- `subtitles`: `soft_stream_count`, `present` (a text subtitle stream with at least one event), `streams[{stream_index,
+  stream_ordinal, codec, language, status, events, events_per_minute, coverage_share, event_seconds, positions{bottom,
+  middle, top}, dominant_position}]`, and the first measured stream's `events_per_minute, coverage_share,
+  dominant_position` (`summary_stream_index`). Text streams (SubRip, ASS / SSA, mov_text, WebVTT) are read as ASS;
+  the position of an event is its style's `Alignment`, overridden by `\an` / `\a` and by `\pos` / `\move` (y / PlayResY:
+  top third, middle, bottom third). Bitmap streams (PGS, DVD) are `not_performed`. `burned_in` is always `not_measured`.
+- `audio`: `status, stream_index, stream_ordinal, duration, integrated_lufs, loudness_range_lu, true_peak_dbtp,
+  integrated_below_absolute_gate, silence_threshold_db, silence_min_duration, silence_share, active_share,
+  longest_silence, silence_count`, `music_bed` (always `not_measured`).
+- `media-analysis style diff <reference> <candidate> --json` → `{schema: media-analysis/edit-style-diff@1, direction:
+  "candidate - reference", compared, different[], items[{metric, status, reference, candidate, difference, relative,
+  equal}]}`; a metric missing on either side is `status: unavailable` with `missing_in`, never 0. Inputs may be a
+  saved profile Observation (`style profile --out`), its `data`, or a response document with one `edit_style`
+  Observation. The diff states differences; it does not say which edit is better.
