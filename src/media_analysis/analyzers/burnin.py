@@ -27,7 +27,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..errors import AnalysisError
-from ..runner import FF_INPUT_PREFIX, run_argv
+from ..runner import FF_INPUT_PREFIX, stream_records
 
 ANALYSIS_WIDTH = 480
 EDGE_LEVEL = 64                    # edge-map bytes at or above this are edges
@@ -237,22 +237,28 @@ def summarise(frames: List[List[Dict[str, Any]]], interval: float, duration: Opt
 
 def measure(ffmpeg: str, input_path: str, stream_ordinal: int, width: int, height: int, interval: float, duration: Optional[float],
             timeout: Optional[float]) -> Dict[str, Any]:
+    """Sample, detect and summarise. Frames are read from ffmpeg's stdout one at a time and reduced to their regions
+    straight away, so memory does not grow with the length of the input."""
     w, h = analysis_size(width, height)
-    graph = (f"[0:v:{stream_ordinal}]fps=1/{interval}:round=down,scale={w}:{h}:flags=area,format=gray,split[l][e];"
+    # 0:V (capital) skips attached pictures (cover art), matching streams_of()'s numbering of video streams
+    graph = (f"[0:V:{stream_ordinal}]fps=1/{interval}:round=down,scale={w}:{h}:flags=area,format=gray,split[l][e];"
              f"[e]edgedetect=low=0.08:high=0.2[g];[l][g]hstack[out]")
     argv = [ffmpeg, *FF_INPUT_PREFIX, "-loglevel", "error", "-i", input_path, "-filter_complex", graph, "-map", "[out]",
             "-an", "-sn", "-f", "rawvideo", "-pix_fmt", "gray", "-"]
-    r = run_argv(argv, timeout, binary=True)
-    if r.returncode != 0:
-        raise AnalysisError("ANALYSIS_FAILED", "burned-in subtitle frame sampling failed", {"stderr_tail": "\n".join(r.stderr.strip().splitlines()[-5:])})
-    raw = r.stdout_bytes or b""
-    size = 2 * w * h
-    frames = []
-    for k in range(len(raw) // size):
-        frame = raw[k * size:(k + 1) * size]
+    frames: List[List[Dict[str, Any]]] = []
+
+    def on_frame(frame: bytes) -> None:
         luma = b"".join(frame[y * 2 * w:y * 2 * w + w] for y in range(h))
         edges = b"".join(frame[y * 2 * w + w:(y + 1) * 2 * w] for y in range(h))
         frames.append(frame_regions(luma, edges, w, h))
+
+    r = stream_records(argv, timeout, 2 * w * h, on_frame)
+    if r.returncode != 0:
+        raise AnalysisError("ANALYSIS_FAILED", "burned-in subtitle frame sampling failed", {"stderr_tail": "\n".join(r.stderr.strip().splitlines()[-5:])})
+    common = {"interval": interval, "analysis_width": w, "analysis_height": h, "frames_sampled": len(frames)}
+    if not frames:
+        # e.g. a clip shorter than the sampling interval: nothing was looked at, so nothing is reported as measured
+        return {"status": "not_performed", "reason": "no frame was sampled (the stream is shorter than burned_in_interval, or empty)", **common}
     out = summarise(frames, interval, duration)
     out.update({"analysis_width": w, "analysis_height": h,
                 "method": "frames every interval s, edge map (ffmpeg edgedetect); rows with many separate edge runs form text lines; "

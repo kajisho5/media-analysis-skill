@@ -262,7 +262,7 @@ class StyleAnalyzer(Analyzer):
         if not fps:
             return {"status": "not_performed", "reason": "video stream declares no frame rate", "stream_index": s["index"]}
         ctx.record("ffmpeg", f"scdet on video stream {n}")
-        argv = ffmpeg_null_argv(ctx.exe("ffmpeg"), ctx.input_path, "-map", f"0:v:{n}", "-an", "-sn", "-vf",
+        argv = ffmpeg_null_argv(ctx.exe("ffmpeg"), ctx.input_path, "-map", f"0:V:{n}", "-an", "-sn", "-vf",
                                 f"scdet=threshold={parameters['threshold']},metadata=print:file=-", loglevel="error")
         r = run_argv(argv, ctx.timeout)
         if r.returncode != 0:

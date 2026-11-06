@@ -147,7 +147,8 @@ method, measurement` (ADR-029).
   dominant_position` (`summary_stream_index`). Text streams (SubRip, ASS / SSA, mov_text, WebVTT) are read as ASS;
   the position of an event is its style's `Alignment`, overridden by `\an` / `\a` and by `\pos` / `\move` (y / PlayResY:
   top third, middle, bottom third). Bitmap streams (PGS, DVD) are `not_performed`.
-  `burned_in` (ADR-033, parameter `burned_in_interval`, default 1.0 s, 0 = off → `not_performed`): `status, interval,
+  `burned_in` (ADR-033, parameter `burned_in_interval`, default 1.0 s, 0 = off → `not_performed`; a stream shorter than
+  the interval yields no sampled frame → `not_performed` with `frames_sampled: 0`, never zeros): `status, interval,
   frames_sampled, frames_with_text, present, coverage_share` (share of sampled frames with text), `switches,
   switches_per_minute` (text appearing, or its regions moving / changing in number), `positions{vertical{top, middle,
   bottom}, horizontal{left, center, right}}` (per region and frame), `dominant_position`, `text_height_ratio{median,

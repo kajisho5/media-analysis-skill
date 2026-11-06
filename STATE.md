@@ -88,8 +88,8 @@ against the code, a command run or the GitHub API on that date; anything that co
 - No other caller found in the sibling checkouts; whether anything outside them calls it is **unverified**.
 
 ## Tests and CI
-- `python -m pytest -q`: **131 passed** locally on 2026-11-06 (Python 3.11, FFmpeg 6.1.1, Linux) from 100 test
-  functions — collected per file: `test_contract.py` 43, `test_integration.py` 43, `test_unit.py` 43, `test_evals.py` 2.
+- `python -m pytest -q`: **133 passed** locally on 2026-11-06 (Python 3.11, FFmpeg 6.1.1, Linux) from 102 test
+  functions — collected per file: `test_contract.py` 43, `test_integration.py` 43, `test_unit.py` 45, `test_evals.py` 2.
 - `python evals/run.py` 15/15 measurement evals; `python evals/contract_evals.py` 17/17 contract evals;
   `python -m pyflakes src tests evals` clean.
 - `.github/workflows/tests.yml` (push to main, every PR), real FFmpeg on every job:

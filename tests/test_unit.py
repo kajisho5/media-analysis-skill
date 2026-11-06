@@ -809,3 +809,51 @@ def test_burned_in_regions_and_summary():
     assert s["positions"]["vertical"] == {"top": 2, "middle": 0, "bottom": 2} and s["dominant_position"] == "bottom"
     none = summarise([[], []], 1.0, 2.0)
     assert none["present"] is False and none["text_height_ratio"] is None and none["band_share"] is None
+
+
+def test_stream_records_streams_and_times_out():
+    """stream_records hands over fixed-size records as they arrive (a trailing partial record is dropped), returns
+    stderr, and kills the child at the deadline like run_argv."""
+    import sys
+    from media_analysis.runner import stream_records
+    got = []
+    script = "import sys; sys.stdout.buffer.write(b'ab' * 5 + b'z'); sys.stderr.write('done')"
+    r = stream_records([sys.executable, "-c", script], 30, 4, got.append)
+    assert r.returncode == 0 and got == [b"abab", b"abab"] and r.stderr == "done"
+    with pytest.raises(AnalysisError) as ei:
+        stream_records([sys.executable, "-c", "import time; time.sleep(30)"], 0.5, 4, got.append)
+    assert ei.value.code == "ANALYZER_TIMEOUT"
+    with pytest.raises(AnalysisError) as ei:
+        stream_records(["x\x00y"], 1, 4, got.append)
+    assert ei.value.code == "INVALID_INPUT"
+
+
+def test_edit_style_selects_video_streams_without_cover_art(monkeypatch):
+    """streams_of() skips attached pictures (cover art), so ffmpeg must be told the same numbering: 0:V:n, not 0:v:n
+    (0:v counts cover art and would point at the wrong stream when the cover comes first)."""
+    from media_analysis.analyzers import burnin, style
+    from media_analysis.runner import RunResult
+    seen = []
+
+    def fake_stream(argv, timeout, size, on_record):
+        seen.append(argv)
+        return RunResult(0, "", "", 0.0)
+
+    monkeypatch.setattr(burnin, "stream_records", fake_stream)
+    out = burnin.measure("ffmpeg", "/x.mp4", 2, 640, 360, 1.0, 10.0, 5)
+    assert out["status"] == "not_performed" and out["frames_sampled"] == 0
+    graph = seen[0][seen[0].index("-filter_complex") + 1]
+    assert graph.startswith("[0:V:2]") and "0:v:" not in graph
+
+    def fake_run(argv, timeout):
+        seen.append(argv)
+        return RunResult(0, "", "", 0.0)
+
+    monkeypatch.setattr(style, "run_argv", fake_run)
+    probe = {"container": {"duration": 4.0}, "streams": [
+        {"index": 0, "type": "video", "disposition": ["attached_pic"], "duration": None, "nb_frames": 1, "video": {"fps": 25.0, "width": 64, "height": 64}},
+        {"index": 1, "type": "video", "disposition": [], "duration": 4.0, "nb_frames": 100, "video": {"fps": 25.0, "width": 320, "height": 180}}]}
+    ctx = AnalysisContext("/x.mp4", fake_caps(), 5)
+    ctx.exe = lambda name: name
+    v = style.StyleAnalyzer()._video(ctx, probe, {"video_stream": 0, "threshold": 10.0, "min_shot_duration": 0.25})
+    assert v["stream_index"] == 1 and seen[-1][seen[-1].index("-map") + 1] == "0:V:0"

@@ -404,6 +404,12 @@
   - Per recording: coverage = sampled frames with text / frames; switches = text appearing, or its regions moving by
     more than half a line height or changing in number; per minute over the duration; position counts; medians.
   - `style diff` compares the new numbers and `present` / `dominant_position`.
+  - Frames are read from ffmpeg's stdout one at a time (`runner.stream_records`: fixed-size records, stderr drained on
+    a thread, a watchdog kills the process group at the timeout) and reduced to their regions at once, so memory
+    stays at one frame for any length of input. No sampled frame (a clip shorter than the interval) is
+    `not_performed`, so a diff sees it as unavailable rather than as "no subtitles".
+  - Video streams are selected as `0:V:n` (capital V, which skips attached pictures) here and in the `style`
+    analyzer's scdet pass, matching `streams_of()`'s numbering when cover art comes first.
 - Limits, stated in the output's `method` and in docs/tools.md: no OCR, so any text in the picture counts (signs,
   captions, a lower third) and very detailed pictures (foliage, fine patterns, a test card's digits) can read as text;
   timing resolution is the sampling interval; coverage is a share of sampled frames. A model-based text detector
