@@ -54,7 +54,7 @@ def build_scenes(cuts: List[Dict[str, float]], duration: Optional[float], min_sc
 
 class SceneAnalyzer(Analyzer):
     id = "scenes"
-    algorithm_version = "1"
+    algorithm_version = "2"
     supported_kinds = ("scene_detection",)
     required_capabilities = ("ffprobe", "ffmpeg", "filter:scdet")
 
@@ -66,7 +66,8 @@ class SceneAnalyzer(Analyzer):
         s = select_stream(p, "video", parameters["stream"])
         duration = s["duration"] if s["duration"] is not None else container_duration(p)
         ctx.record("ffmpeg", f"scdet on video stream {parameters['stream']}")
-        argv = ffmpeg_null_argv(ctx.exe("ffmpeg"), ctx.input_path, "-map", f"0:v:{parameters['stream']}", "-an", "-sn", "-vf",
+        # 0:V (capital) skips attached pictures (cover art), matching select_stream()'s numbering of video streams
+        argv = ffmpeg_null_argv(ctx.exe("ffmpeg"), ctx.input_path, "-map", f"0:V:{parameters['stream']}", "-an", "-sn", "-vf",
                                 f"scdet=threshold={parameters['threshold']},metadata=print:file=-", loglevel="error")
         r = run_argv(argv, ctx.timeout)
         if r.returncode != 0:
