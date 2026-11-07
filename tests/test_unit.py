@@ -857,3 +857,29 @@ def test_edit_style_selects_video_streams_without_cover_art(monkeypatch):
     ctx.exe = lambda name: name
     v = style.StyleAnalyzer()._video(ctx, probe, {"video_stream": 0, "threshold": 10.0, "min_shot_duration": 0.25})
     assert v["stream_index"] == 1 and seen[-1][seen[-1].index("-map") + 1] == "0:V:0"
+
+
+def test_scene_detection_selects_video_stream_without_cover_art(monkeypatch):
+    """scene_detection numbers video streams like select_stream() (attached pictures skipped), so the ffmpeg map must
+    be 0:V:n: with cover art before the real video, 0:v:0 would run scdet on the single cover frame."""
+    from media_analysis.analyzers import scenes
+    from media_analysis.runner import RunResult
+    seen = []
+
+    def fake_run(argv, timeout):
+        seen.append(argv)
+        return RunResult(0, "", "", 0.0)
+
+    monkeypatch.setattr(scenes, "run_argv", fake_run)
+    probe = {"container": {"duration": 4.0}, "streams": [
+        {"index": 0, "type": "video", "disposition": ["attached_pic"], "duration": None, "nb_frames": 1, "video": {"fps": 25.0, "width": 64, "height": 64}},
+        {"index": 1, "type": "video", "disposition": [], "duration": 4.0, "nb_frames": 100, "video": {"fps": 25.0, "width": 320, "height": 180}},
+        {"index": 2, "type": "video", "disposition": [], "duration": 3.0, "nb_frames": 75, "video": {"fps": 25.0, "width": 160, "height": 90}}]}
+    ctx = AnalysisContext("/x.mp4", fake_caps(), 5)
+    ctx.exe = lambda name: name
+    ctx._probe = probe
+    for ordinal, index, duration in ((0, 1, 4.0), (1, 2, 3.0)):
+        out = scenes.SceneAnalyzer().analyze(ctx, "scene_detection", {"stream": ordinal, "threshold": 10.0, "min_scene_duration": 0.5})
+        mapped = seen[-1][seen[-1].index("-map") + 1]
+        assert mapped == f"0:V:{ordinal}" and out["stream_index"] == index and out["duration"] == duration
+    assert not any(a.startswith("0:v:") for argv in seen for a in argv)

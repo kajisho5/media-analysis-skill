@@ -2,7 +2,7 @@
 
 ```text
 pip install -e . pytest
-python -m pytest -q               # 133 tests: unit + contract + integration + evals
+python -m pytest -q               # 134 tests: unit + contract + integration + evals
 python evals/run.py               # 15 measurement eval cases with expected values and tolerances
 python evals/contract_evals.py    # 17 contract eval cases
 ```
@@ -42,7 +42,7 @@ Nothing binary is committed; fixtures are generated with ffmpeg into a temporary
 contract ↔ registry agreement (no undeclared or unimplemented tools) · AnalysisRequest validation · command / argv
 rejection · kind validation · parameter validation (unknown, type, range, NaN) · probe / stream / video (CFR, VFR,
 unknown) / audio parsers · silence parser + classification · ebur128 parser (incl. `-inf`) · noise window parser, nearest-rank percentile and summary (`-inf` windows → null) · A/V start offset from a probe · integrity status
-(PASS / WARN / FAIL) · scdet parser · edit_style shot / distribution helpers, ASS event positions, subtitle presence over every stream, profile diff · library description / measured tags, external tags parsing, search conditions · highlight sentence splitting (segments, words, speaker change, CJK punctuation), scoring rules, signal parsing · burned-in text lines / regions / band / summary on synthetic frames · streamed raw-frame reading (records, partial tail, timeout) · video stream selection skips cover art (`0:V:n`) · malformed result · wrong asset / kind / analysis id / source · deterministic
+(PASS / WARN / FAIL) · scdet parser · edit_style shot / distribution helpers, ASS event positions, subtitle presence over every stream, profile diff · library description / measured tags, external tags parsing, search conditions · highlight sentence splitting (segments, words, speaker change, CJK punctuation), scoring rules, signal parsing · burned-in text lines / regions / band / summary on synthetic frames · streamed raw-frame reading (records, partial tail, timeout) · video stream selection skips cover art (`0:V:n`) in edit_style, burned-in sampling and scene_detection · malformed result · wrong asset / kind / analysis id / source · deterministic
 identity (parameter order, asset / version / parameter changes) · cache hit / miss / relabel / disabled · cache
 invalidation by asset, algorithm version, parameters · a package (patch) version bump keeps the cache, with the
 measuring version still in `source` · an algorithm version bump invalidates only that analyzer's entries · every

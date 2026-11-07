@@ -153,7 +153,8 @@ def streams_of(probe: Dict[str, Any], ctype: str) -> List[Dict[str, Any]]:
 
 
 def select_stream(probe: Dict[str, Any], ctype: str, ordinal: int) -> Dict[str, Any]:
-    """The N-th stream of a type (ffmpeg's `0:v:N` / `0:a:N` numbering)."""
+    """The N-th stream of a type, attached pictures excluded (ffmpeg's `0:V:N` / `0:a:N` numbering; lower-case `0:v:N`
+    would count cover art)."""
     ss = streams_of(probe, ctype)
     if not ss:
         raise AnalysisError("UNSUPPORTED_FORMAT", f"input has no {ctype} stream", {"stream_types": sorted({s['type'] for s in probe['streams']})})

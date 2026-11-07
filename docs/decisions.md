@@ -418,3 +418,16 @@
   cached `edit_style` Observations are recomputed once. Contract `@1` additive: one parameter, `filter:edgedetect` in
   `style`'s required capabilities and in `capability_names`, the tool description. video-production-agent's
   `check_contract` accepts it unchanged; a re-pin shows the new parameter and capability.
+
+## ADR-034 `scene_detection` maps its video stream as `0:V:n`
+- Context: ADR-033 switched `edit_style` and burned-in sampling to `0:V:n`. `scene_detection` still mapped
+  `0:v:n` while numbering streams with `select_stream()`, which skips attached pictures. With cover art before the
+  real video, the reported `stream_index` named the video but scdet ran on the single cover frame (no cuts, one
+  scene).
+- Decision: `scenes` maps `0:V:n` (capital V skips attached pictures), the same numbering as `select_stream()` /
+  `streams_of()`. No other analyzer maps a video stream by ordinal (audio `0:a:n` is unaffected: attached pictures
+  are video streams). Unit regression test with a cover-art-first probe.
+- Versions: `scenes` `algorithm_version` "1" → "2" (its output changes for inputs with cover art first, ADR-028
+  rule), so cached `scene_detection` Observations are recomputed once. A fix, released as a patch; no contract or
+  parameter change.
+
