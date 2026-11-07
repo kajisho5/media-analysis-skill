@@ -425,8 +425,9 @@
   real video, the reported `stream_index` named the video but scdet ran on the single cover frame (no cuts, one
   scene).
 - Decision: `scenes` maps `0:V:n` (capital V skips attached pictures), the same numbering as `select_stream()` /
-  `streams_of()`. No other analyzer maps a video stream by ordinal (audio `0:a:n` is unaffected: attached pictures
-  are video streams). Unit regression test with a cover-art-first probe.
+  `streams_of()`. With this, every analyzer that maps a video stream by ordinal (`style`'s scdet pass and burned-in
+  sampling since ADR-033, now `scenes`) uses `0:V:n`; audio `0:a:n` is unaffected (attached pictures are video
+  streams). Unit regression test with a cover-art-first probe.
 - Versions: `scenes` `algorithm_version` "1" → "2" (its output changes for inputs with cover art first, ADR-028
   rule), so cached `scene_detection` Observations are recomputed once. A fix, released as a patch; no contract or
   parameter change.

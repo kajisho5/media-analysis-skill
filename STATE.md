@@ -49,7 +49,7 @@ against the code, a command run or the GitHub API on that date; anything that co
 - Acceptance measurements (ADR-029, roadmap step 3): `noise_floor` (window-RMS noise floor / signal level /
   no-reference SNR estimate, one channel or all) for voice-enhance-skill's ISOLATE / BLEED_REDUCE acceptance, and
   `timing.av_start_offset` (audio vs video start time, ITU-R BT.1359-1 45 ms default tolerance) for remux / dubbing.
-  `timing`'s and `style`'s `algorithm_version` is `"2"`, every other analyzer's `"1"`.
+  `timing`'s, `style`'s and `scenes`' `algorithm_version` is `"2"`, every other analyzer's `"1"`.
 - Editing-style profile (ADR-030, roadmap step 7): `edit_style` (cuts per minute, shot lengths in frames / seconds and
   their distribution, soft-subtitle events / coverage / position, loudness, silence share); `media-analysis style
   profile <input> --out <file>` saves it, `media-analysis style diff <ref> <cand>` compares two profiles per metric.
