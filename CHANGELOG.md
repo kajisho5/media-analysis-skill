@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.14 - 2026-11-07
+
+- fix: scene_detection maps its video stream as 0:V:n (#28) (1ea5894)
+
 ## v0.1.13 - 2026-11-06
 
 - Burned-in subtitle measurement in edit_style (roadmap step 10) (#27) (2ed30f2)
