@@ -9,7 +9,8 @@ on:
 
 permissions:
   contents: write
-  pull-requests: read  # release-drafter needs this to list merged PRs and their labels for version resolution
+  # write: the step before release-drafter removes release-level labels a bot put on Dependabot pull requests
+  pull-requests: write
 
 concurrency:
   group: release
@@ -23,6 +24,14 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: true
+
+      # Dependabot labels a pull request `major` when the dependency it bumps moved a major version, which says
+      # nothing about this product's version. A release-level label on a Dependabot pull request counts only when a
+      # person applied it; a failure here fails the release instead of resolving from unchecked labels.
+      - name: Drop release-level labels a bot put on Dependabot pull requests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/scripts/dependabot_release_labels.py
 
       # Dry run: only resolves the next version from the labels of PRs merged since the last release
       # (release-drafter.yml's version-resolver; unlabeled PRs default to patch). Creates no draft, no release.
