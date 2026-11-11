@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.15 - 2026-11-11
+
+- fix(release): Dependabot labels cannot raise the release level (#29) (8ac5c8b)
+
 ## v0.1.14 - 2026-11-07
 
 - fix: scene_detection maps its video stream as 0:V:n (#28) (1ea5894)
