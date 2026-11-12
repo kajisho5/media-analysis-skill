@@ -1,6 +1,6 @@
 ---
 name: media-analysis
-description: Measure deterministic facts about a media file (container, streams, video/audio format, silence, loudness, integrity, scene cuts, timing) with local ffprobe/ffmpeg and return a structured Observation. Use when a task needs to *know* something about a video or audio file before deciding anything: duration, resolution, fps, CFR/VFR, codecs, channel layout, where the silence is, how loud it is (LUFS / true peak), whether it decodes cleanly, where hard cuts are. Do not use it to edit, convert, normalise or export media (that is ffmpeg-skill) or to interpret the numbers (that is the agent). Python 3.9 standard library, no cloud, no API keys, no AI.
+description: Measure deterministic facts about a media file (container, streams, video/audio format, silence, loudness, integrity, scene cuts, timing) with local ffprobe/ffmpeg and return a structured Observation. Use when a task needs to *know* something about a video or audio file before deciding anything: duration, resolution, fps, CFR/VFR, codecs, channel layout, where the silence is, how loud it is (LUFS / true peak), whether it decodes cleanly, where hard cuts are, where someone speaks (optional extra `vad`). Do not use it to edit, convert, normalise or export media (that is ffmpeg-skill) or to interpret the numbers (that is the agent). Python 3.9 standard library, no cloud, no API keys, no generative AI (speech_regions runs a fixed-weight voice-activity classifier from the optional extra `vad`, shipped in the package).
 ---
 
 # media-analysis (Skill)
@@ -45,6 +45,7 @@ Engine options: `--timeout S`, `--max-analysis-calls N`, `--max-total-seconds S`
 | `timing` | `gap_factor` (2.5 × median interval), `av_mismatch_tolerance` (0.1 s), `av_start_offset_tolerance` (0.045 s) |
 | `noise_floor` | `stream` (0), `channel` (-1 = all channels, else one channel), `window` (0.05 s), `noise_percentile` (10), `signal_percentile` (95) |
 | `edit_style` | `video_stream` (0), `audio_stream` (0), `threshold` (10, scdet score), `min_shot_duration` (0.25 s), `silence_threshold_db` (-50), `silence_min_duration` (0.5 s), `burned_in_interval` (1.0 s between sampled frames; 0 = off) |
+| `speech_regions` | `stream` (0), `channel` (-1 = all channels downmixed), `threshold` (0.5), `min_speech_duration` (0.25 s), `min_silence_duration` (0.1 s), `speech_pad` (0.03 s); needs the optional extra `vad`, else `status: UNKNOWN` (ADR-035) |
 
 `media-analysis style profile <input> --out profile.json` saves an `edit_style` Observation; `media-analysis style diff
 <reference.json> <candidate.json> --json` prints the metric-by-metric difference (candidate − reference, ADR-030).

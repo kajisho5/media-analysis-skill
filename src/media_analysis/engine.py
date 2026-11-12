@@ -138,7 +138,7 @@ class AnalysisEngine:
                                analysis_id=analysis_id, observed_at=self.clock(), parameters=req.parameters, asset=asset, seconds=seconds)
         duration = container_duration(ctx._probe) if ctx._probe else None
         verify_observation(obs, expected_asset_id=req.asset_id, expected_kind=req.kind, expected_analysis_id=analysis_id, duration=duration)
-        if use_cache:
+        if use_cache and analyzer.cacheable(data):
             self.cache.put(identity, obs, **cache_kw)
         return self._result(req, analysis_id, observation=_round(obs, req.output_policy["round"]),
                             cache={"status": cache_status, "policy": req.cache_policy, "key": identity}, usage=_usage(1, seconds, ctx.operations))

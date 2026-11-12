@@ -621,7 +621,7 @@ def test_timeout_keeps_the_protocol(media, tmp_path):
 
 
 # ---- real media matrix: every kind on every fixture yields a contract-conformant ok or error result
-AUDIO_KINDS = {"audio_format", "silence", "loudness", "noise_floor"}
+AUDIO_KINDS = {"audio_format", "silence", "loudness", "noise_floor", "speech_regions"}
 VIDEO_KINDS = {"video_format", "scene_detection"}
 
 
@@ -704,3 +704,72 @@ def test_non_ascii_path_on_non_utf8_pipe(media, tmp_path):
                        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     doc = json.loads(r.stdout.decode("utf-8"))
     assert r.returncode == 3 and doc["results"][0]["error_kind"] == "FILE_NOT_FOUND" and "無い" in doc["results"][0]["error"]["message"]
+
+
+# ---- speech_regions (ADR-035): the voice-activity model on synthetic speech over music and over noise
+def _speech_f1(regions, labels, duration, step=0.01):
+    """Frame-level F1 (10 ms) of measured regions against the fixture's true speech extents."""
+    grid = [i * step for i in range(int(round(duration / step)))]
+    pred = [any(r["start"] <= t < r["end"] for r in regions) for t in grid]
+    truth = [any(a <= t < b for a, b in labels) for t in grid]
+    tp = sum(p and q for p, q in zip(pred, truth))
+    if not tp:
+        return 0.0
+    precision, recall = tp / sum(pred), tp / sum(truth)
+    return 2 * precision * recall / (precision + recall)
+
+
+def _require_vad():
+    from media_analysis.analyzers.vad import vad_status
+    st = vad_status()
+    if not st["available"]:
+        pytest.fail("speech_regions integration tests need the optional extra: " + st["detail"] + " (they are not skipped)")
+
+
+def test_speech_regions_f1_over_music_and_noise(media, tmp_path):
+    """Done-when of roadmap step 4: speech-region F1 above 0.9 against the labels, on speech over music and over noise."""
+    _require_vad()
+    from fixtures.generate import SPEECH_SECONDS, speech_labels
+    labels = speech_labels()
+    e = engine(tmp_path)
+    for key in ("speech", "speech_music", "speech_noise"):
+        o = run(e, media[key], "speech_regions")
+        d = o["data"]
+        assert o["source"] == f"media-analysis/vad@{VERSION}" and d["status"] == "MEASURED", key
+        assert d["region_count"] == 3 and d["engine"]["name"] == "silero-vad" and d["engine"]["device"] == "cpu", (key, d["regions"])
+        f1 = _speech_f1(d["regions"], labels, SPEECH_SECONDS)
+        assert f1 > 0.9, (key, round(f1, 3), d["regions"])
+        for r, (a, b) in zip(d["regions"], labels):           # each region starts within 0.1 s of its utterance
+            assert abs(r["start"] - a) < 0.1 and r["end"] > b and 0.5 <= r["probability"] <= r["max_probability"] <= 1.0, (key, r)
+        assert abs(d["analysed_seconds"] - SPEECH_SECONDS) < 0.05 and d["longest_pause"]["duration"] > 1.0
+        assert 0.4 < d["speech_share"] < 0.55, (key, d["speech_share"])
+
+
+def test_speech_regions_music_alone_is_not_speech(media, tmp_path):
+    _require_vad()
+    d = run(engine(tmp_path), media["music"], "speech_regions")["data"]
+    assert d["status"] == "MEASURED" and d["regions"] == [] and d["speech_share"] == 0.0 and d["longest_pause"] is None
+    sil = run(engine(tmp_path), media["silence"], "speech_regions")["data"]
+    assert sil["regions"] == [] and sil["speech_share"] == 0.0
+
+
+def test_speech_regions_offline_deterministic_and_channel(media, tmp_path, monkeypatch):
+    """No network during the analysis (the model ships in the package), the same input gives the same regions, and
+    one channel of a multichannel stream can be measured on its own."""
+    _require_vad()
+    import socket
+
+    def no_network(*a, **k):
+        raise AssertionError("speech_regions opened a network socket")
+
+    monkeypatch.setattr(socket, "socket", no_network)
+    monkeypatch.setattr(socket, "create_connection", no_network)
+    e = engine(tmp_path)
+    first = run(e, media["speech_music"], "speech_regions")["data"]
+    second = run(e, media["speech_music"], "speech_regions")["data"]
+    assert first["regions"] == second["regions"] and first["engine"]["model_sha256"] == second["engine"]["model_sha256"]
+    tone = run(e, media["stereo"], "speech_regions", channel=1)["data"]
+    assert tone["channel"] == 1 and tone["regions"] == []          # a steady 1 kHz sine is not speech
+    with pytest.raises(AnalysisError) as ei:
+        run(e, media["stereo"], "speech_regions", channel=2)
+    assert ei.value.code == "INVALID_INPUT"

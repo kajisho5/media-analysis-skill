@@ -19,6 +19,7 @@ and the contract disagree.
 | `media-analysis/scenes` | `scene_detection` | ffprobe, ffmpeg, filter:scdet | probe + ffmpeg `-vf scdet,metadata=print -f null -` |
 | `media-analysis/noise` | `noise_floor` | ffprobe, ffmpeg, filter:astats | probe + ffmpeg `-af [pan,]asetnsamples,astats=reset=1,ametadata=print -f null -` |
 | `media-analysis/style` | `edit_style` | ffprobe, ffmpeg, filter:scdet, filter:ebur128, filter:silencedetect, filter:edgedetect | probe + ffmpeg `-vf scdet,metadata=print -f null -` + each text subtitle stream `-c:s ass -f ass -` (stdout) + `-af ebur128,silencedetect -f null -` + frames `fps,scale,edgedetect,hstack -f rawvideo -` (stdout) |
+| `media-analysis/vad` | `speech_regions` | ffprobe, ffmpeg (+ optional extra `vad`: onnxruntime, numpy) | probe + ffmpeg `-af [pan,]aresample=16000 -ac 1 -f f32le -` (stdout) into the voice-activity model in-process |
 
 Every analyzer runs ffprobe at most once per request (shared context). Stream ordinals (`stream` parameter) follow
 ffmpeg's `0:v:N` / `0:a:N` numbering; attached pictures (cover art) are not video streams.
@@ -127,6 +128,30 @@ method, measurement` (ADR-029).
   signal itself and `snr_db` is near 0 — a fact about the input, not an error.
 - Digital silence is `-inf` dBFS: a percentile landing on it is `null` and listed in `unmeasurable` (with `snr_db`).
 - Before / after comparisons (a denoiser's acceptance) should use the same parameters on both files.
+
+## `speech_regions` (parameters `stream, channel, threshold, min_speech_duration, min_silence_duration, speech_pad`)
+
+`status, regions[{start, end, duration, probability, max_probability}], region_count, speech_seconds, speech_share,
+pause_count, longest_pause{start, end, duration}, leading_non_speech, trailing_non_speech, stream_index,
+stream_ordinal, channel, channels, analysed_seconds, window_seconds, window_count, threshold, release_threshold,
+engine{name, model, model_sha256, runtime, device, licence}, method` (ADR-035).
+
+- Where someone speaks, from a voice-activity model (silero-vad, MIT code and weights) run on the CPU with
+  onnxruntime. The model file ships in the package (`media_analysis/models/`); nothing is downloaded at run time.
+  Install the runtime with `pip install 'media-analysis-skill[vad]'`.
+- Without the extra, `status` is `UNKNOWN`, `missing` / `install` say what to install, and `regions`, the share and
+  the pauses are `null`. Speech is never inferred from level or silence; an `UNKNOWN` result is not cached.
+- The stream (all channels downmixed, or one `channel`) is resampled to 16 kHz mono; the model gives one probability
+  per 32 ms window. A region starts at a window >= `threshold`; it ends at the first window below `release_threshold`
+  (= `threshold` − 0.15) once `min_silence_duration` has passed from that window without the probability returning to
+  `threshold` (windows in between, from `release_threshold` up to `threshold`, neither end nor extend it — the
+  engine's own segmentation rule); regions shorter than `min_speech_duration`
+  are dropped, each is widened by `speech_pad` (clamped to the stream, overlapping ones merged). `probability` is the
+  mean of the region's windows before padding.
+- `longest_pause` is the longest gap between two regions (leading / trailing non-speech are reported separately);
+  `null` with fewer than two regions. The model's region ends lag the voice by about 0.1–0.25 s.
+- Not ffmpeg-skill `silence` (a level threshold: music or noise count as sound) nor `scenes --speech` (a
+  zero-crossing ratio per second, not a speech decision); the comparison on the same fixtures is in ADR-035.
 
 ## `edit_style` (parameters `video_stream, audio_stream, threshold, min_shot_duration, silence_threshold_db, silence_min_duration`)
 

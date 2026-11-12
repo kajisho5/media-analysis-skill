@@ -38,11 +38,14 @@ them as deterministic, verifiable **Observation JSON** that an agent (or a human
 
 **media-analysis-skill is NOT an AI agent.** It contains no AI provider, no LLM, no prompt, no reasoning, no
 inference, no decision, no policy, no approval and no production planning. It never edits, converts or renders
-media. It measures, and it says what it could not measure.
+media. It measures, and it says what it could not measure. The one exception to "no inference" is opt-in:
+`speech_regions` runs a fixed-weight voice-activity classifier (silero-vad, MIT, shipped in the package, CPU, no
+download) when the optional extra `vad` is installed, and reports `UNKNOWN` otherwise (ADR-035).
 
 ## Quick start
 
-Requirements: Python 3.9+ (standard library only) and FFmpeg (`ffmpeg` + `ffprobe`) on `PATH`.
+Requirements: Python 3.9+ (standard library only) and FFmpeg (`ffmpeg` + `ffprobe`) on `PATH`. Optional:
+`pip install 'media-analysis-skill[vad]'` (onnxruntime + numpy) for `speech_regions`.
 
 ```bash
 git clone https://github.com/kajisho5/media-analysis-skill
@@ -160,6 +163,7 @@ observation; `status` of the response is `ok`, `partial` or `error`. Full refere
 | `timing` | `media-analysis/timing` | ffprobe | per-stream packet timestamps, gaps, A/V duration mismatch, A/V start offset |
 | `noise_floor` | `media-analysis/noise` | ffmpeg `astats` | short-window RMS → noise floor (p10), signal level (p95), no-reference SNR estimate; one channel or all |
 | `edit_style` | `media-analysis/style` | ffmpeg `scdet`, `ebur128`, `silencedetect` | editing-style profile: cuts per minute, shot-length distribution (frames and seconds), soft and burned-in subtitle frequency / coverage / position (burned-in: also text height, band / outline; ffmpeg `edgedetect`, no OCR), loudness, silence share; `media-analysis style diff` compares two profiles |
+| `speech_regions` | `media-analysis/vad` | voice-activity model (silero-vad, optional extra `vad`) | where someone speaks: time ranges with a probability, speech share, longest pause; `UNKNOWN` without `pip install 'media-analysis-skill[vad]'` (model shipped in the package, nothing downloaded) |
 
 Workflow commands built on these kinds (CLI only, not analysis kinds: they read a folder and write an index, which one
 request cannot express):
@@ -256,13 +260,13 @@ caller's retry policy: `FATAL` (never retry unchanged), `RETRYABLE` (bounded ret
   `contract@2` would be a different `schema` value and is refused by `--check` of a `@1` implementation. Stable
   identifiers for the video-production-agent adapter: `skill_id`, `version`, `tools[].tool_id`, `tools[].version`, `tools[].algorithm_version`,
   `tools[].required_capabilities`, `tools[].kinds`, `kind_to_tool`, `errors.exit_codes`.
-- `contract --json` → `provides`: all twelve of this Skill's analysis kinds by their cross-repository Capability id
+- `contract --json` → `provides`: all thirteen of this Skill's analysis kinds by their cross-repository Capability id
   (`silence` -> `measure.audio.silence`, `loudness` -> `measure.audio.loudness`, `integrity` -> `measure.audio.integrity`,
   `scene_detection` -> `measure.video.scene_detection`, `timing` -> `measure.video.timing`, `media_probe` ->
   `measure.media.probe`, `stream_layout` -> `measure.media.stream_layout`, `video_format` -> `measure.video.probe`,
   `audio_format` -> `measure.audio.probe`, `duration` -> `measure.media.duration`, `noise_floor` ->
-  `measure.audio.noise_floor`, new in ADR-029, and `edit_style` -> `measure.video.edit_style`, new in ADR-030; neither is
-  in the matrix yet), matching the ids assigned to this
+  `measure.audio.noise_floor`, new in ADR-029, and `edit_style` -> `measure.video.edit_style`, new in ADR-030, and `speech_regions` -> `measure.audio.speech_regions`,
+  new in ADR-035; none of these is in the matrix yet), matching the ids assigned to this
   Skill in [`kajisho5/AI-video-production-OS`](https://github.com/kajisho5/AI-video-production-OS)'s
   `docs/CAPABILITY_MATRIX.md` (see `docs/decisions.md` ADR-022 for why `video_format` gets its own
   `measure.video.probe` id rather than `qc-skill`'s `measure.video.format`: a raw probe and a threshold judgment are

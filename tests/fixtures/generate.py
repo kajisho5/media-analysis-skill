@@ -29,13 +29,24 @@ Every fixture has a known construction so expected values in tests and evals are
                   5-8 s bottom with a 2 px black outline (28 px tall overall = 0.0778), 8.5-9.5 s top (y 30), plain.
                   On screen 7 of 10 s (coverage 0.7), 3 subtitles (18 per minute), 3 of 4 sampled seconds at the bottom
   clean.mp4       burned.mp4 without the subtitles (the same grey picture)
+  speech.wav      12 s, mono PCM 16-bit 16 kHz: three synthetic "utterances" (formant-synthesised vowels with consonant-like
+                  noise onsets, 60 ms gaps between words, peak 0.5) starting at 1.0, 4.6 and 7.5 s, digital silence between;
+                  their true extents (first to last synthesised sample) are SPEECH_LABELS = speech_labels()
+  speech_music.wav  speech.wav over a music bed (plucked harmonic arpeggio, a note every 0.25 s, + a 110 Hz drone)
+                  for the whole 12 s, 48 kHz (resampled by the analyzer)
+  speech_noise.wav  speech.wav over pink noise (amplitude 0.25, seed 3) for the whole 12 s, 48 kHz
+  music.wav       the music bed alone, 12 s, 48 kHz: no speech anywhere
 """
 from __future__ import annotations
 
+import math
+import random
 import shutil
+import struct
 import subprocess
+import wave
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List, Tuple
 
 FF = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-nostdin"]
 X264 = ["-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p"]
@@ -47,6 +58,93 @@ STYLE_COLOURS = ("red", "lime", "blue", "white", "black", "yellow", "magenta")
 STYLE_B_SRT = ("1\n00:00:00,500 --> 00:00:01,500\nFirst line.\n\n2\n00:00:02,000 --> 00:00:03,000\nSecond line.\n\n"
                "3\n00:00:04,000 --> 00:00:05,000\nThird line.\n\n4\n00:00:06,000 --> 00:00:07,000\n{\\an8}Top line.\n\n")
 BURSTS = "0.5*sin(2*PI*440*t)*lt(mod(t\\,1)\\,0.5)"
+
+# speech fixtures (ADR-035): utterance start time and words, one syllable per vowel letter
+SPEECH_UTTERANCES = ((1.0, ("aio", "eu", "oa")), (4.6, ("ie", "ou")), (7.5, ("aeo", "ia", "ue", "oi")))
+SPEECH_SECONDS = 12.0
+SPEECH_RATE = 16000
+_NOTE = "(220+55*floor(mod(t*4\\,6)))"
+MUSIC = (f"0.15*exp(-5*mod(t\\,0.25))*(sin(2*PI*{_NOTE}*t)+0.5*sin(4*PI*{_NOTE}*t)+0.3*sin(6*PI*{_NOTE}*t))"
+         "+0.06*sin(2*PI*110*t)")
+_VOWELS = {"a": (730, 1090, 2440, 3400), "i": (270, 2290, 3010, 3700), "u": (300, 870, 2240, 3300),
+           "e": (530, 1840, 2480, 3500), "o": (570, 840, 2410, 3400)}
+_BANDWIDTHS = (80, 100, 140, 200)
+_GAINS = (1.0, 0.6, 0.3, 0.15)
+
+
+def _resonator(freq: float, bw: float) -> Tuple[float, float, float]:
+    r = math.exp(-math.pi * bw / SPEECH_RATE)
+    c = -r * r
+    b = 2 * r * math.cos(2 * math.pi * freq / SPEECH_RATE)
+    return 1 - b - c, b, c
+
+
+def synth_utterance(words, f0: float, seed: int) -> List[float]:
+    """A speech-like signal with the structure a voice-activity model keys on: a glottal pulse train (with intonation
+    and jitter) through four vowel formants that glide towards the next vowel, a 40 ms noise burst before each
+    syllable, 60 ms gaps between words. Standard library only, deterministic for a seed; peak-normalised to 1."""
+    rng = random.Random(seed)
+    out: List[float] = []
+    formant_state = [[0.0, 0.0] for _ in range(4)]
+    noise_state = [0.0, 0.0]
+    phase = 0.0
+    k = 0
+    for wi, word in enumerate(words):
+        for si, v in enumerate(word):
+            a, b, c = _resonator(3000 + 800 * (k % 3), 1500)
+            n = int(0.04 * SPEECH_RATE)
+            for j in range(n):
+                y = a * rng.uniform(-1, 1) + b * noise_state[0] + c * noise_state[1]
+                noise_state = [y, noise_state[0]]
+                out.append(0.25 * y * math.sin(math.pi * j / n))
+            n = int((0.16 + 0.05 * ((k * 7) % 3)) * SPEECH_RATE)
+            nxt = _VOWELS[word[si + 1]] if si + 1 < len(word) else _VOWELS[v]
+            for j in range(n):
+                x = j / n
+                f = f0 * (1 + 0.12 * math.sin(2 * math.pi * (k * 0.37 + x * 0.8))) * (1 + 0.01 * rng.uniform(-1, 1))
+                phase += f / SPEECH_RATE
+                p = phase % 1.0
+                g = 0.5 * (1 - math.cos(math.pi * p / 0.4)) if p < 0.4 else (math.cos(math.pi * (p - 0.4) / 0.32) if p < 0.56 else 0.0)
+                src = g + 0.02 * rng.uniform(-1, 1)
+                sample = 0.0
+                for q in range(4):
+                    a, b, c = _resonator(_VOWELS[v][q] * (1 - 0.3 * x) + nxt[q] * 0.3 * x, _BANDWIDTHS[q])
+                    y = a * src + b * formant_state[q][0] + c * formant_state[q][1]
+                    formant_state[q] = [y, formant_state[q][0]]
+                    sample += _GAINS[q] * y
+                out.append(sample * min(1.0, x / 0.15, (1 - x) / 0.2))
+            k += 1
+        if wi + 1 < len(words):
+            out.extend([0.0] * int(0.06 * SPEECH_RATE))
+    peak = max(abs(v) for v in out) or 1.0
+    return [v / peak for v in out]
+
+
+def _speech_track() -> Tuple[List[float], List[Tuple[float, float]]]:
+    buf = [0.0] * int(SPEECH_SECONDS * SPEECH_RATE)
+    labels = []
+    for i, (t0, words) in enumerate(SPEECH_UTTERANCES):
+        samples = synth_utterance(words, f0=110 + 25 * (i % 3), seed=i + 1)
+        o = int(round(t0 * SPEECH_RATE))
+        for j, v in enumerate(samples):
+            buf[o + j] += 0.5 * v
+        labels.append((t0, round(t0 + len(samples) / SPEECH_RATE, 4)))
+    return buf, labels
+
+
+def speech_labels() -> List[Tuple[float, float]]:
+    """True speech extents of speech.wav (and of the mixes built from it), in seconds."""
+    return _speech_track()[1]
+
+
+def write_speech(path: Path) -> List[Tuple[float, float]]:
+    buf, labels = _speech_track()
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(SPEECH_RATE)
+        w.writeframes(b"".join(struct.pack("<h", max(-32767, min(32767, int(round(v * 32767))))) for v in buf))
+    return labels
 
 
 def available() -> bool:
@@ -90,7 +188,8 @@ def build_all(directory: Path) -> Dict[str, Path]:
         "multi": "multi.mp4", "loud": "loud.wav", "short": "short.mp4", "scenes": "scenes.mp4", "corrupt": "corrupt.mp4",
         "noisy": "noisy.wav", "cleaned": "cleaned.wav", "av_offset": "av_offset.mkv",
         "style_a": "style_a.mp4", "style_b": "style_b.mkv", "portrait": "portrait.mp4", "talk": "talk.wav",
-        "burned": "burned.mp4", "clean": "clean.mp4"}.items()}
+        "burned": "burned.mp4", "clean": "clean.mp4", "speech": "speech.wav", "speech_music": "speech_music.wav",
+        "speech_noise": "speech_noise.wav", "music": "music.wav"}.items()}
     _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-f", "lavfi", "-i", f"aevalsrc='{TONE_GATED}':s=48000", "-t", "6",
           *X264, "-c:a", "aac", "-shortest", str(f["av"])])
     _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-t", "4", *X264, str(f["video_only"])])
@@ -128,6 +227,13 @@ def build_all(directory: Path) -> Dict[str, Path]:
           "-c:a", "pcm_s16le", str(f["talk"])])
     for key, extra in (("burned", ["-vf", BURNED_IN]), ("clean", [])):
         _run(["-f", "lavfi", "-i", "color=c=0x808080:size=640x360:rate=25", *extra, "-t", "10", *X264, str(f[key])])
+    write_speech(f["speech"])
+    bed = f"{SPEECH_SECONDS:g}"
+    _run(["-f", "lavfi", "-i", f"aevalsrc='{MUSIC}':s=48000:d={bed}", "-c:a", "pcm_s16le", str(f["music"])])
+    for key, bed_input in (("speech_music", ["-i", str(f["music"])]),
+                           ("speech_noise", ["-f", "lavfi", "-i", f"anoisesrc=c=pink:a=0.25:r=48000:seed=3:d={bed}"])):
+        _run(["-i", str(f["speech"]), *bed_input, "-filter_complex", "[0:a]aresample=48000[s];[s][1:a]amix=inputs=2:duration=first:normalize=0",
+              "-c:a", "pcm_s16le", "-ar", "48000", str(f[key])])
     data = bytearray(f["av"].read_bytes())
     mid = len(data) // 2
     data[mid:mid + 3000] = b"\x00" * 3000

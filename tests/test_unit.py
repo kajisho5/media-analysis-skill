@@ -883,3 +883,71 @@ def test_scene_detection_selects_video_stream_without_cover_art(monkeypatch):
         mapped = seen[-1][seen[-1].index("-map") + 1]
         assert mapped == f"0:V:{ordinal}" and out["stream_index"] == index and out["duration"] == duration
     assert not any(a.startswith("0:v:") for argv in seen for a in argv)
+
+
+# ---- speech_regions segmentation / summary / UNKNOWN (ADR-035); the model itself runs in test_integration
+def test_speech_segment_hysteresis_min_durations_and_pad():
+    from media_analysis.analyzers.vad import FRAME_SECONDS, segment
+    f = FRAME_SECONDS
+    # 10 windows speech, 2 windows dip to 0.4 (above the 0.35 release threshold: still speech), 10 windows speech,
+    # 5 windows silence (0.16 s >= 0.1 s: the region ends), 3 windows speech (0.096 s < 0.25 s: dropped), 5 silence
+    probs = [0.9] * 10 + [0.4] * 2 + [0.8] * 10 + [0.1] * 5 + [0.9] * 3 + [0.1] * 5
+    regs = segment(probs, threshold=0.5, min_speech=0.25, min_silence=0.1, pad=0.0)
+    assert len(regs) == 1 and regs[0]["start"] == 0.0 and regs[0]["end"] == round(22 * f, 4)
+    assert regs[0]["max_probability"] == 0.9 and regs[0]["probability"] == round((0.9 * 10 + 0.4 * 2 + 0.8 * 10) / 22, 4)
+    # a short low run (2 windows = 0.064 s < 0.1 s) does not split; a long one does
+    split = segment([0.9] * 10 + [0.1] * 2 + [0.9] * 10 + [0.1] * 4 + [0.9] * 10, 0.5, 0.25, 0.1, 0.0)
+    assert [(r["start"], r["end"]) for r in split] == [(0.0, round(22 * f, 4)), (round(26 * f, 4), round(36 * f, 4))]
+    # padding is clamped to the analysed length and padded regions that meet are merged
+    padded = segment([0.9] * 10 + [0.1] * 4 + [0.9] * 10, 0.5, 0.25, 0.1, pad=0.1)
+    assert len(padded) == 1 and padded[0]["start"] == 0.0 and padded[0]["end"] == round(24 * f, 4)
+    assert segment([0.1] * 50, 0.5, 0.25, 0.1, 0.03) == [] and segment([], 0.5, 0.25, 0.1, 0.03) == []
+
+
+def test_speech_summary_share_and_longest_pause():
+    from media_analysis.analyzers.vad import summarise as speech_summary
+    regs = [{"start": 1.0, "end": 2.0, "duration": 1.0}, {"start": 2.5, "end": 4.0, "duration": 1.5}, {"start": 6.0, "end": 7.0, "duration": 1.0}]
+    d = speech_summary(regs, 10.0)
+    assert d["speech_seconds"] == 3.5 and d["speech_share"] == 0.35 and d["region_count"] == 3 and d["pause_count"] == 2
+    assert d["longest_pause"] == {"start": 4.0, "end": 6.0, "duration": 2.0}
+    assert d["leading_non_speech"] == 1.0 and d["trailing_non_speech"] == 3.0
+    none = speech_summary([], 5.0)
+    assert none["speech_share"] == 0.0 and none["longest_pause"] is None and none["leading_non_speech"] is None
+    assert speech_summary(regs[:1], 10.0)["longest_pause"] is None
+
+
+def test_speech_regions_unknown_without_the_extra_is_not_cached(tmp_path, monkeypatch):
+    """Without onnxruntime / numpy the kind is UNKNOWN: no regions, no guess from level, and the result is not cached
+    (installing the extra must measure, not replay the UNKNOWN)."""
+    from media_analysis.analyzers import vad
+    probe = {"container": {"duration": 3.0}, "streams": []}
+    stream = {"index": 0, "type": "audio", "audio": {"channels": 1, "sample_rate": 16000}}
+    monkeypatch.setattr(vad, "vad_status", lambda: {"available": False, "missing": ["onnxruntime"], "runtime": None, "model": vad.MODEL_FILE,
+                                                    "detail": "optional extra 'vad' not installed (onnxruntime missing): " + vad.INSTALL_HINT})
+    monkeypatch.setattr(vad, "select_stream", lambda p, t, n: stream)
+
+    class Ctx:
+        operations = []
+
+        def probe(self):
+            return probe
+
+        def exe(self, name):
+            raise AssertionError("no executable may run for an UNKNOWN result")
+
+    a = vad.VadAnalyzer()
+    params = {"stream": 0, "channel": -1, "threshold": 0.5, "min_speech_duration": 0.25, "min_silence_duration": 0.1, "speech_pad": 0.03}
+    d = a.analyze(Ctx(), "speech_regions", params)
+    assert d["status"] == "UNKNOWN" and d["regions"] is None and d["speech_share"] is None and d["longest_pause"] is None
+    assert d["missing"] == ["onnxruntime"] and "[vad]" in d["install"] and d["engine"] is None
+    assert a.cacheable(d) is False and a.cacheable({"status": "MEASURED"}) is True
+    assert [op["executable"] for op in a.plan(Ctx(), "speech_regions", params)] == ["ffprobe"]
+
+
+def test_speech_regions_contract_entries():
+    from media_analysis.contract import CAPABILITY_IDS, KIND_TO_TOOL, PARAMETER_SCHEMAS, TOOL_CAPABILITIES, skill_contract
+    assert KIND_TO_TOOL["speech_regions"] == "vad" and CAPABILITY_IDS["speech_regions"] == "measure.audio.speech_regions"
+    assert TOOL_CAPABILITIES["vad"] == ["ffprobe", "ffmpeg"]
+    assert PARAMETER_SCHEMAS["speech_regions"]["threshold"]["default"] == 0.5
+    extra = skill_contract()["execution"]["optional_extras"]["vad"]
+    assert extra["kinds"] == ["speech_regions"] and extra["download_at_run_time"] is False

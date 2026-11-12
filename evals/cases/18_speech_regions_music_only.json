@@ -1,0 +1,12 @@
+{
+  "id": "18_speech_regions_music_only",
+  "fixture": "music",
+  "kind": "speech_regions",
+  "derivation": "music.wav: the music bed of case 16 alone (plucked harmonic arpeggio + drone, -21.3 dBFS RMS, never below -35 dBFS for 0.6 s, so a level threshold calls all of it sound). It holds no speech, so no region and a speech share of 0. Needs the optional extra 'vad'",
+  "expect": [
+    {"path": "data.status", "value": "MEASURED"},
+    {"path": "data.region_count", "value": 0},
+    {"path": "data.speech_share", "value": 0.0},
+    {"path": "data.longest_pause", "value": null}
+  ]
+}
