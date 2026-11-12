@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.17 - 2026-11-12
+
+- docs(roadmap): add the ownership decisions of 2026-11-12 (#31) (50f12db)
+
 ## v0.1.16 - 2026-11-12
 
 - Speech regions from a voice-activity model (roadmap step 4) (#30) (4faa7a9)
