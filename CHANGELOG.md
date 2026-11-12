@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.16 - 2026-11-12
+
+- Speech regions from a voice-activity model (roadmap step 4) (#30) (4faa7a9)
+
 ## v0.1.15 - 2026-11-11
 
 - fix(release): Dependabot labels cannot raise the release level (#29) (8ac5c8b)
