@@ -7,12 +7,15 @@ numpy are the optional extra `vad` (`pip install 'media-analysis-skill[vad]'`). 
 `status: UNKNOWN` with no regions: speech is never guessed from silence or level (that is what `silence` measures).
 
 The model gives one probability per 32 ms window (512 samples at 16 kHz). Regions are the runs at or above
-`threshold`, closed once the probability has stayed below `threshold - 0.15` for `min_silence_duration`; runs
+`threshold`, closed at the first window below `threshold - 0.15` once `min_silence_duration` has passed from it
+without a return to `threshold` (the engine's own segmentation rule); runs
 shorter than `min_speech_duration` are dropped and each region is widened by `speech_pad`. Measurement only: which
 pause is a good cut point is the caller's decision."""
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
+import importlib.util
 import os
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -48,16 +51,20 @@ def vad_status() -> Dict[str, Any]:
     no model is loaded."""
     missing: List[str] = []
     runtime = None
-    try:
-        import numpy
-        numpy.zeros(1)
-    except Exception:          # ImportError, or a broken build failing at import (OSError / DLL load on Windows)
-        missing.append("numpy")
-    try:
-        import onnxruntime
-        runtime = f"onnxruntime {onnxruntime.__version__}"
-    except Exception:
-        missing.append("onnxruntime")
+    # found, not imported: importing onnxruntime can print device-discovery warnings on stderr, and doctor /
+    # conformance must keep stderr clean. A runtime that is found but cannot load is reported UNKNOWN at analysis.
+    for name in ("numpy", "onnxruntime"):
+        try:
+            found = importlib.util.find_spec(name) is not None
+        except (ImportError, ValueError):
+            found = False
+        if not found:
+            missing.append(name)
+    if "onnxruntime" not in missing:
+        try:
+            runtime = f"onnxruntime {importlib.metadata.version('onnxruntime')}"
+        except Exception:
+            runtime = "onnxruntime (version unknown)"
     if not os.path.isfile(model_path()):
         missing.append(f"model file {MODEL_FILE}")
     detail = "" if not missing else f"optional extra 'vad' not installed ({', '.join(missing)} missing): {INSTALL_HINT}"
@@ -71,6 +78,7 @@ class SileroVad:
         import numpy as np
         import onnxruntime
         self._np = np
+        onnxruntime.set_default_logger_severity(3)      # errors only: warnings would land on the CLI's stderr
         opts = onnxruntime.SessionOptions()
         opts.intra_op_num_threads = 1          # one thread: the same input gives the same probabilities run after run
         opts.inter_op_num_threads = 1

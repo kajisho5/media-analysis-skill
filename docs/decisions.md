@@ -457,8 +457,8 @@
   - Measurement: ffmpeg decodes one audio stream (all channels downmixed, or one `channel` via `pan`) to 16 kHz mono
     float on stdout, read 512 samples at a time (`runner.stream_records`, so memory does not grow with length); the
     model gives one probability per 32 ms window (64 samples of context and its recurrent state carried between
-    windows). Regions: a run starts at a window >= `threshold` (0.5), ends once the probability has stayed below
-    `threshold − 0.15` for `min_silence_duration` (0.1 s), is dropped if shorter than `min_speech_duration`
+    windows). Regions: a run starts at a window >= `threshold` (0.5) and ends at the first window below
+    `threshold − 0.15` once `min_silence_duration` (0.1 s) has passed from it without a return to `threshold`, is dropped if shorter than `min_speech_duration`
     (0.25 s), and is widened by `speech_pad` (0.03 s); the defaults are the engine's own published defaults. Output:
     regions with mean / max probability, speech seconds and share, pauses, the longest pause, leading / trailing
     non-speech, and the engine's name, model file, model sha256 and runtime version (provenance).

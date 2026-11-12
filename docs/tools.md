@@ -142,8 +142,10 @@ engine{name, model, model_sha256, runtime, device, licence}, method` (ADR-035).
 - Without the extra, `status` is `UNKNOWN`, `missing` / `install` say what to install, and `regions`, the share and
   the pauses are `null`. Speech is never inferred from level or silence; an `UNKNOWN` result is not cached.
 - The stream (all channels downmixed, or one `channel`) is resampled to 16 kHz mono; the model gives one probability
-  per 32 ms window. A region starts at a window >= `threshold` and ends once the probability stays below
-  `release_threshold` (= `threshold` − 0.15) for `min_silence_duration`; regions shorter than `min_speech_duration`
+  per 32 ms window. A region starts at a window >= `threshold`; it ends at the first window below `release_threshold`
+  (= `threshold` − 0.15) once `min_silence_duration` has passed from that window without the probability returning to
+  `threshold` (windows in between, from `release_threshold` up to `threshold`, neither end nor extend it — the
+  engine's own segmentation rule); regions shorter than `min_speech_duration`
   are dropped, each is widened by `speech_pad` (clamped to the stream, overlapping ones merged). `probability` is the
   mean of the region's windows before padding.
 - `longest_pause` is the longest gap between two regions (leading / trailing non-speech are reported separately);
