@@ -5,7 +5,7 @@ Written from a read-only audit of this repository on 2026-10-30. Each step below
 
 ## Where it stands
 
-Version single-sourced from `pyproject.toml` (#17): `contract --json` → `version` equals the newest tag (0.1.7 at `v0.1.7`, checked 2026-11-05). Cache keyed by per-analyzer algorithm version, so releases no longer empty it (ADR-028). 13 measurement kinds (step 3 added `noise_floor`, step 7 `edit_style`, step 4 `speech_regions`). 150 tests collected, CI on 3 OSes. STATE.md current (#18).
+Version single-sourced from `pyproject.toml` (#17): `contract --json` → `version` equals the newest tag (0.1.16 at `v0.1.16`, checked 2026-11-12). Cache keyed by per-analyzer algorithm version, so releases no longer empty it (ADR-028). 13 measurement kinds (step 3 added `noise_floor`, step 7 `edit_style`, step 4 `speech_regions`). 150 tests collected, CI on 3 OSes. STATE.md current (#18).
 
 ## What this repository owns
 
@@ -14,10 +14,11 @@ Version single-sourced from `pyproject.toml` (#17): `contract --json` → `versi
 | Owned job | Status | Note |
 |---|---|---|
 | メディア計測 | done |  |
+| 発話区間 | done | `speech_regions` (step 4); transcription-skill takes it as an input; added by the [Velisa ownership decisions 2026-11-12](https://github.com/kajisho5/Velisa/blob/main/docs/ecosystem/DECISION_LOG.md) |
 
 ## Wiring
 
-The agent pins this contract at 0.1.7 (video-production-agent#93, ADR-078), `noise_floor` included. Calls ffmpeg/ffprobe directly (overlap with ffmpeg-skill probe/silence/loudness/scenes is intentional).
+The agent pins this contract at 0.1.16 (first pinned at 0.1.7 in video-production-agent#93, ADR-078), `noise_floor` included. Calls ffmpeg/ffprobe directly (overlap with ffmpeg-skill probe/silence/loudness/scenes is intentional).
 
 ## Steps
 
@@ -47,6 +48,12 @@ The agent pins this contract at 0.1.7 (video-production-agent#93, ADR-078), `noi
 - [x] **10. Burned-in subtitle measurement** — measure `edit_style`'s `subtitles.burned_in` (until now `not_measured`): sample frames at a fixed interval, find the text areas in the picture, and report the share of the running time with subtitles on screen, subtitle switches per minute, position (top / middle / bottom and left / right), text height relative to the frame, text areas / approximate characters per frame, and a band or outline behind the text where it can be told; `style diff` compares them. Done (ADR-033): `edit_style` (algorithm version 2, parameter `burned_in_interval`, default 1 s, 0 = off) finds text-like lines from an ffmpeg `edgedetect` edge map and measures all of these on its own (no OCR, no model); `diff` compares seven numbers and two categories. qc-skill's `video.text_regions` was considered first, but it measures contrast and ink height inside boxes the caller already knows — it does not find where text is — so it is not called; pairing the boxes found here with it for a contrast figure is left as a proposal. Limit: any text in the picture counts, and very detailed pictures can look like text — [#27](https://github.com/kajisho5/media-analysis-skill/pull/27)
   - なぜ要るか：お手本の焼き込み字幕の出し方（どれだけ・どこに・どの大きさで・帯や縁取り）を数値で掴み、自分の編集と比べられる
   - Done when: on synthetic fixtures with and without burned-in subtitles, coverage, position and text height match the known values within tolerance, and the diff shows the difference
+- [ ] **11. (agent side) speech regions planned for long inputs** — the agent adds SkillSpec `speech_region_analysis` and plans `speech_regions` → `transcribe(speech_regions=...)` ([Velisa ownership decisions 2026-11-12](https://github.com/kajisho5/Velisa/blob/main/docs/ecosystem/DECISION_LOG.md))
+  - Done when: tracked in video-production-agent (step 33)
+
+## Boundaries
+
+Cut detection is layered, not a collision ([Velisa ownership decisions 2026-11-12](https://github.com/kajisho5/Velisa/blob/main/docs/ecosystem/DECISION_LOG.md)): ffmpeg-skill `scenes` is the fast list, this repository's `scene_detection` is the observation, detection-skill `shots` is the frame-accurate shot table, qc-skill only judges, and slide-sync-skill handles slides. Speech regions (`発話区間`) are measured here; transcription-skill receives them.
 
 ---
 Engine for every media operation: [ffmpeg-skill](https://github.com/kajisho5/ffmpeg-skill) (3.x, 42 tools, contract_version 2.0; treated as complete, proposals go to Velisa's ROADMAP). Orchestrator: [video-production-agent](https://github.com/kajisho5/video-production-agent).
