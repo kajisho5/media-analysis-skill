@@ -16,6 +16,7 @@ import tempfile
 from typing import Any, Dict, List, Optional
 
 from . import PACKAGE_NAME, SKILL_ID, VERSION
+from .analyzers.vad import vad_status
 from .budget import Budget
 from .cache import ObservationCache
 from .capabilities import detect
@@ -258,6 +259,9 @@ def doctor_report(workspace: Optional[str] = None, cache_dir: Optional[str] = No
         if name.startswith("filter:"):
             c = caps.get(name)
             checks[name] = {"status": "ok" if c.status == "AVAILABLE" else "missing", "detail": c.detail}
+    vad = vad_status()      # optional extra: missing it leaves speech_regions UNKNOWN, it does not degrade the doctor status
+    checks["extra:vad"] = {"status": "ok" if vad["available"] else "missing", "optional": True, "kinds": ["speech_regions"],
+                           "runtime": vad["runtime"], "model": vad["model"], "detail": vad["detail"]}
     try:
         registry = default_registry()
         rows = registry.availability(caps)

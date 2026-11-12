@@ -1,13 +1,13 @@
 # Testing
 
 ```text
-pip install -e . pytest
-python -m pytest -q               # 134 tests: unit + contract + integration + evals
-python evals/run.py               # 15 measurement eval cases with expected values and tolerances
+pip install -e ".[vad]" pytest
+python -m pytest -q               # 150 tests: unit + contract + integration + evals + release labels
+python evals/run.py               # 18 measurement eval cases with expected values and tolerances
 python evals/contract_evals.py    # 17 contract eval cases
 ```
 
-FFmpeg is required. Integration tests and evals are **not skipped** when it is missing; the session fails, so a
+FFmpeg and the optional extra `vad` (onnxruntime, numpy; for `speech_regions`) are required for the suite. Integration tests and evals are **not skipped** when either is missing; the session fails, so a
 green run always means the real ffmpeg / ffprobe were exercised. CI (`.github/workflows/tests.yml`) runs the whole
 suite on Linux (Python 3.9, 3.11), Windows (choco ffmpeg) and macOS (brew ffmpeg).
 
@@ -36,13 +36,17 @@ Nothing binary is committed; fixtures are generated with ffmpeg into a temporary
 | `talk.wav` | 180 s mono 8 kHz: 220 Hz tone 0.05, +12 dB for 90–110 s, white noise 0.3 for 110.2–113 s; transcript `conftest.talk_transcript()` (36 sentences with word times, keyword in 90–110 s, speaker B from 150 s) | highlights: 90–110 s ranked first, boundaries on sentences |
 | `burned.mp4` | 10 s 640x360 grey with glyph-like white bars 24 px tall: 1–4 s bottom on a black band, 5–8 s bottom with a 2 px outline, 8.5–9.5 s top | edit_style burned-in: coverage 0.7, 18 switches / min, bottom, text height 0.0667 / 0.0778, band and outline |
 | `clean.mp4` | `burned.mp4` without the bars | burned-in: none; diff against `burned.mp4` |
+| `speech.wav` | 12 s mono 16 kHz, written by Python (`synth_utterance`): three synthetic utterances (formant vowels + consonant-like noise onsets) at 1.0–2.82, 4.6–5.61, 7.5–9.93 s (`speech_labels()`), silence between | speech_regions: 3 regions, F1 > 0.9 |
+| `speech_music.wav` | `speech.wav` over a plucked-arpeggio music bed (−21.3 dBFS vs speech −15.7), 48 kHz | speech_regions over music: F1 > 0.9 |
+| `speech_noise.wav` | `speech.wav` over pink noise amplitude 0.25 (−26.2 dBFS, ~10 dB SNR), 48 kHz | speech_regions over noise: F1 > 0.9 |
+| `music.wav` | the music bed alone | speech_regions: no region |
 
 ## Unit tests (`tests/test_unit.py`, no ffmpeg)
 
 contract ↔ registry agreement (no undeclared or unimplemented tools) · AnalysisRequest validation · command / argv
 rejection · kind validation · parameter validation (unknown, type, range, NaN) · probe / stream / video (CFR, VFR,
 unknown) / audio parsers · silence parser + classification · ebur128 parser (incl. `-inf`) · noise window parser, nearest-rank percentile and summary (`-inf` windows → null) · A/V start offset from a probe · integrity status
-(PASS / WARN / FAIL) · scdet parser · edit_style shot / distribution helpers, ASS event positions, subtitle presence over every stream, profile diff · library description / measured tags, external tags parsing, search conditions · highlight sentence splitting (segments, words, speaker change, CJK punctuation), scoring rules, signal parsing · burned-in text lines / regions / band / summary on synthetic frames · streamed raw-frame reading (records, partial tail, timeout) · video stream selection skips cover art (`0:V:n`) in edit_style, burned-in sampling and scene_detection · malformed result · wrong asset / kind / analysis id / source · deterministic
+(PASS / WARN / FAIL) · scdet parser · edit_style shot / distribution helpers, ASS event positions, subtitle presence over every stream, profile diff · library description / measured tags, external tags parsing, search conditions · highlight sentence splitting (segments, words, speaker change, CJK punctuation), scoring rules, signal parsing · burned-in text lines / regions / band / summary on synthetic frames · streamed raw-frame reading (records, partial tail, timeout) · speech_regions segmentation (hysteresis, min speech / silence, padding and merging), summary (share, longest pause), `UNKNOWN` without the extra (no executable, not cached) and contract entries · video stream selection skips cover art (`0:V:n`) in edit_style, burned-in sampling and scene_detection · malformed result · wrong asset / kind / analysis id / source · deterministic
 identity (parameter order, asset / version / parameter changes) · cache hit / miss / relabel / disabled · cache
 invalidation by asset, algorithm version, parameters · a package (patch) version bump keeps the cache, with the
 measuring version still in `source` · an algorithm version bump invalidates only that analyzer's entries · every
@@ -54,7 +58,7 @@ secret leakage (env value, secret-looking key, child environment) · command / a
 ## Contract tests (`tests/test_contract.py`)
 
 schema validator · contract JSON self-consistency (sections, schema versions, error / exit tables, budget / cache
-vocab) · tools and kinds derived from the registry (`tool_spec(analyzer)` equality, coverage of all 12 kinds,
+vocab) · tools and kinds derived from the registry (`tool_spec(analyzer)` equality, coverage of all 13 kinds,
 capability names) · consumer rules from `tests/contract/agent_skill_package_contract.json` (video-production-agent
 SkillPackage / ToolSpec / Observation / capability-name rules) · request schema ↔ `AnalysisRequest` agreement (incl.
 `strategy` / `budget` / `cache_policy` rejection) · response / result / observation schema roundtrip through
@@ -79,7 +83,7 @@ integrity (PASS, FAIL on corruption, video-only, audio-only) · multiple streams
 loudness, out-of-range ordinal) · no-audio video · scene detection · timing / duration · **cache hit skips the
 analyzer** (execution log: first run executed ffmpeg, second run executed nothing, a new engine reuses the disk cache)
 · cache policies (`bypass`, `only` → `CACHE_MISS`) · budget and timeout with real processes · **timeout leaves no
-ffmpeg process and no cache entry** (`/proc` scan on Linux) · determinism across runs · **all 12 kinds on real
+ffmpeg process and no cache entry** (`/proc` scan on Linux) · determinism across runs · **speech_regions** (F1 > 0.9 against the labels on clean speech, speech over music and over noise; music alone and digital silence give no region; offline with sockets disabled; deterministic; one channel) · **all 13 kinds on real
 multi-stream media, response validated against the published schemas, second batch entirely from cache** · CLI smoke
 (doctor, probe, analyze multi-kind, cache hit, dry-run JSON / text, error inside the JSON document vs stderr, partial
 batch with budget error, `run` with request file, argv rejection, `--allowed-input`, contract) · `run -` over stdin
@@ -88,7 +92,7 @@ unknown budget field · **invalid-input matrix** over stdin (invalid JSON, missi
 invalid / unknown parameter, path traversal, nonexistent file, non-media file, command field, executable override →
 one parseable error response each, stderr empty) · absolute vs relative input (one identity) and `--allowed-input` ·
 timeout inside a batch keeps the protocol (partial response, others served, no cache entry, no ffmpeg left) ·
-**real-media matrix**: all 12 kinds × 10 fixtures validated against the schemas, expected `UNSUPPORTED_FORMAT` for
+**real-media matrix**: all 13 kinds × 10 fixtures validated against the schemas, expected `UNSUPPORTED_FORMAT` for
 audio kinds on video-only and video kinds on audio-only media, second pass served from cache except the
 never-cached errors · determinism across two processes · **non-ASCII (Japanese) file name over cp1252 / cp932 / ascii pipes**: JSON
 protocol, human mode, stdin request and error documents all survive.
@@ -108,5 +112,5 @@ invalidation (content and algorithm version invalidate, a package version bump d
 Each case names its fixture, kind, parameters, the derivation of the expected values and a list of expectations
 (`eq`, `approx` with tolerance, `gte`, `lte`, `startswith`) on paths in the Observation. Cases: known media probe,
 known video format (stream 1 of a multi-stream file), known audio format, known silence, known loudness (mono and
-stereo), integrity PASS and FAIL, known scene cuts. Tolerances: 0.05 s for container / segment times, 0.2 LU / dB
+stereo), integrity PASS and FAIL, known scene cuts, noise floor (noisy / cleaned), A/V start offset, edit_style (cuts a / b, burned-in), speech_regions (over music, over noise, music only). Tolerances: 0.05 s for container / segment times, 0.2 LU / dB
 for loudness, exact for codecs / counts / dimensions.

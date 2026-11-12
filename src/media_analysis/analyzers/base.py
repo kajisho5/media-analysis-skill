@@ -61,6 +61,11 @@ class Analyzer:
     def analyze(self, ctx: AnalysisContext, kind: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         raise NotImplementedError
 
+    def cacheable(self, data: Dict[str, Any]) -> bool:
+        """Whether this result may be stored in the cache. False for a result that describes the environment rather
+        than the file (speech_regions UNKNOWN without its optional extra, ADR-035)."""
+        return True
+
     def to_dict(self) -> Dict[str, Any]:
         return {"id": self.id, "tool_id": f"media-analysis/{self.id}", "version": self.version, "algorithm_version": self.algorithm_version,
                 "supported_kinds": list(self.supported_kinds), "required_capabilities": list(self.required_capabilities)}

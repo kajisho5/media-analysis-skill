@@ -432,3 +432,93 @@
   rule), so cached `scene_detection` Observations are recomputed once. A fix, released as a patch; no contract or
   parameter change.
 
+
+## ADR-035 Speech regions from a voice-activity model, as the optional extra `vad`
+- Context: roadmap step 4. The agent's edit view, cut boundaries that must not land mid-word and dubbing gaps need
+  to know where someone speaks. `silence` (and ffmpeg-skill `silence`) answers "where is it quiet", which on a
+  recording with music or room noise under the voice is a different question; ffmpeg-skill `scenes --speech` reports
+  a per-second zero-crossing ratio, explicitly not a speech decision. Neither is a speech measurement.
+- Decision: new kind `speech_regions` (tool `media-analysis/vad`, Capability `measure.audio.speech_regions`,
+  `EXPERIMENTAL`). Engine: silero-vad, the 16 kHz ONNX export (`silero_vad_16k_op15.onnx`, 1.29 MB, from the
+  `silero-vad` 6.2.3 distribution), run on the CPU with onnxruntime.
+  - Licence: code and weights MIT (checked in the distribution's `LICENSE`); the notice ships next to the model as
+    `media_analysis/models/silero_vad.LICENSE`. onnxruntime is MIT, numpy BSD-3-Clause.
+  - Packaging: the model file is package data, so installing the package installs the model and **nothing is
+    downloaded at run time** (an integration test runs the analysis with `socket.socket` / `create_connection`
+    replaced by a function that fails). onnxruntime and numpy are the optional extra `vad`
+    (`pip install 'media-analysis-skill[vad]'`); the core package keeps `dependencies = []`. The `silero-vad` PyPI
+    package itself is not a dependency: it requires torch / torchaudio.
+  - Without the extra the result is `status: UNKNOWN` with `missing` and `install`, and `regions`, `speech_share`,
+    `longest_pause` are `null`. It is never guessed from level or silence. An `UNKNOWN` result describes the
+    environment, not the file, so it is not cached (`Analyzer.cacheable`, used by the engine before `cache.put`):
+    installing the extra measures on the next request instead of replaying `UNKNOWN`. A runtime that imports but
+    cannot load the model is also `UNKNOWN`, with the loader's error as the reason. `doctor --json` reports
+    `extra:vad` (`ok` / `missing`, `optional: true`); a missing optional extra does not degrade the doctor status.
+  - Measurement: ffmpeg decodes one audio stream (all channels downmixed, or one `channel` via `pan`) to 16 kHz mono
+    float on stdout, read 512 samples at a time (`runner.stream_records`, so memory does not grow with length); the
+    model gives one probability per 32 ms window (64 samples of context and its recurrent state carried between
+    windows). Regions: a run starts at a window >= `threshold` (0.5), ends once the probability has stayed below
+    `threshold − 0.15` for `min_silence_duration` (0.1 s), is dropped if shorter than `min_speech_duration`
+    (0.25 s), and is widened by `speech_pad` (0.03 s); the defaults are the engine's own published defaults. Output:
+    regions with mean / max probability, speech seconds and share, pauses, the longest pause, leading / trailing
+    non-speech, and the engine's name, model file, model sha256 and runtime version (provenance).
+  - Determinism: fixed weights, one intra-op and one inter-op thread, CPU provider only; the same input gives the
+    same regions run after run (tested). Different onnxruntime builds may differ in the last float digits; output is
+    rounded (`output_policy.round`, default 3).
+  - "No AI" invariant: this is the one model the package runs. It is a fixed-weight classifier that measures a
+    property of the signal (a per-window speech probability) — no generation, no decision, no network, no
+    per-user training — and it is opt-in. The contract's `execution.ai` stays `false` in that sense and
+    `execution.optional_extras.vad` names the model, its requirements and that nothing is downloaded. Which pause
+    is a good cut stays the caller's decision.
+- Fixtures (generated at test time, nothing binary committed besides the model): `speech.wav` holds three synthetic
+  utterances made with the standard library — a glottal pulse train with intonation and jitter through four vowel
+  formants that glide towards the next vowel, a 40 ms noise burst before each syllable, 60 ms gaps between words
+  (`tests/fixtures/generate.py` `synth_utterance`). The labels are the utterances' true extents from construction
+  (first to last synthesised sample: 1.0–2.82, 4.6–5.61, 7.5–9.93 s), not a listener's marks, with word gaps counted
+  as speech. `speech_music.wav` puts them over a music bed (plucked harmonic arpeggio, a note every 0.25 s, plus a
+  110 Hz drone: −21.3 dBFS RMS against −15.7 dBFS for the speech inside the utterances), `speech_noise.wav` over
+  pink noise (−26.2 dBFS, about 10 dB below the speech), both 48 kHz so the resampling path is exercised;
+  `music.wav` is the bed alone.
+- Results (Done when: F1 above 0.9 on speech over music and over noise). Frame-level F1 at 10 ms against the labels,
+  default parameters, Linux, onnxruntime 1.31.1:
+
+  | fixture | F1 | precision | recall | regions |
+  |---|---|---|---|---|
+  | `speech.wav` (clean) | 0.973 | 0.949 | 0.998 | 3 |
+  | `speech_music.wav` | **0.943** | 0.899 | 0.992 | 3 |
+  | `speech_noise.wav` | **0.949** | 0.909 | 0.992 | 3 |
+  | `music.wav` | – | – | – | 0 (0 s of speech) |
+
+  Every region starts within 0.03 s of its utterance; the precision loss is the model's hang-over of 0.1–0.25 s
+  after each utterance ends. `test_speech_regions_f1_over_music_and_noise` asserts F1 > 0.9 on all three, and
+  evals 16–18 pin region starts, share, longest pause and the empty music result.
+- Comparison with ffmpeg-skill on the same fixtures (ffmpeg-skill 2.21.0, `9deb226`, run read-only; ffmpeg-skill was
+  not changed). `silence.py --list --json`: speech = its `keep` ranges (everything not silent). `scenes.py --speech
+  --json` (needs a video stream, so each WAV was muxed with a black 160x90 picture): speech = the 1 s windows whose
+  `speech_music_ratio` is above 1.0 (the file's own median); "best" is the cut-off chosen with the labels, an upper
+  bound no caller has.
+
+  | fixture | `speech_regions` (defaults) | `silence.py` default (−35 dB, 0.6 s) | `silence.py` best threshold (−10 dB) | `scenes --speech` ratio > 1.0 (best) |
+  |---|---|---|---|---|
+  | `speech.wav` F1 | 0.973 | 0.924 | 0.943 | 0.828 (0.863) |
+  | `speech_music.wav` F1 | 0.943 | 0.610 | 0.937 | 0.766 (0.793) |
+  | `speech_noise.wav` F1 | 0.949 | 0.610 | 0.942 | 0.000 (0.610) |
+  | `music.wav`, seconds called speech (truth 0) | 0 | 12.0 | 0 | 4.0 |
+
+  - Level (silence) is good when the speech is clearly louder than the bed *and* the threshold is set for that file:
+    at its default it calls the whole 12 s of the music and noise fixtures sound (F1 0.61 is "everything"), and the
+    −10 dB that works here was picked from the answers; a quieter voice or a louder bed moves it. The model needed no
+    per-file setting and is the only one of the three that tells music from speech at equal level (music alone: 0 s).
+  - The zero-crossing ratio is relative to the file's own median, so on a file that is mostly noise or mostly music
+    the "typical" window is not speech and the ratio cannot be read as speech presence; its resolution is 1 s, so
+    it cannot place a cut between words. It was not designed to, and its own documentation says so.
+  - So the three stay distinct measurements: `silence` = where it is quiet, `scenes --speech` = how the spectrum
+    changes per second, `speech_regions` = where a voice is. No result here suggests a change to ffmpeg-skill.
+- Limits: synthetic speech, one voice at a time, no overlapping talkers, no singing (the engine may call singing
+  speech), one language-independent model; region ends lag by up to ~0.25 s, so a cut placed exactly at `end` is
+  conservative, not early. Real-speech accuracy rests on the engine's own published evaluation, not on this
+  repository's fixtures.
+- Versions: `vad` `algorithm_version` "1". Contract `@1` additive: one tool, one kind, one `provides` entry,
+  parameters, `execution.optional_extras`; the `operations[].executable` vocabulary stays `ffprobe` / `ffmpeg` (the
+  model runs in-process). CI installs `.[vad]` on every job so the model path is exercised on Linux, Windows and
+  macOS; the integration tests fail, not skip, when the extra is missing.

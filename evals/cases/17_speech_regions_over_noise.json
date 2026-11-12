@@ -1,0 +1,16 @@
+{
+  "id": "17_speech_regions_over_noise",
+  "fixture": "speech_noise",
+  "kind": "speech_regions",
+  "derivation": "speech_noise.wav: the same three utterances as case 16 (1.0-2.82, 4.6-5.61, 7.5-9.93 s) over pink noise for the whole 12 s (noise -26.2 dBFS RMS, about 10 dB below the speech). Three regions, each starting within 0.1 s of its utterance; share and longest pause as in case 16. Needs the optional extra 'vad'",
+  "expect": [
+    {"path": "data.status", "value": "MEASURED"},
+    {"path": "data.region_count", "value": 3},
+    {"path": "data.regions.0.start", "op": "approx", "value": 1.0, "tolerance": 0.1},
+    {"path": "data.regions.1.start", "op": "approx", "value": 4.6, "tolerance": 0.1},
+    {"path": "data.regions.2.start", "op": "approx", "value": 7.5, "tolerance": 0.1},
+    {"path": "data.regions.2.end", "op": "approx", "value": 10.0, "tolerance": 0.25},
+    {"path": "data.speech_share", "op": "approx", "value": 0.475, "tolerance": 0.075},
+    {"path": "data.longest_pause.duration", "op": "approx", "value": 1.75, "tolerance": 0.2}
+  ]
+}

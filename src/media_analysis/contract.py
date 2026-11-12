@@ -70,6 +70,15 @@ PARAMETER_SCHEMAS: Dict[str, Dict[str, Dict[str, Any]]] = {
         # ADR-033: seconds between frames sampled for burned-in subtitles; 0 turns that measurement off
         "burned_in_interval": {"type": _NUM, "default": 1.0, "min": 0.0, "max": 60.0},
     },
+    # ADR-035: voice-activity regions; channel -1 downmixes every channel of the stream
+    "speech_regions": {
+        "stream": {"type": _INT, "default": 0, "min": 0, "max": 63},
+        "channel": {"type": _INT, "default": -1, "min": -1, "max": 63},
+        "threshold": {"type": _NUM, "default": 0.5, "min": 0.16, "max": 0.95},
+        "min_speech_duration": {"type": _NUM, "default": 0.25, "min": 0.0, "max": 60.0},
+        "min_silence_duration": {"type": _NUM, "default": 0.1, "min": 0.032, "max": 60.0},
+        "speech_pad": {"type": _NUM, "default": 0.03, "min": 0.0, "max": 5.0},
+    },
 }
 
 # kind -> tool (one tool serves one or more kinds)
@@ -86,6 +95,7 @@ KIND_TO_TOOL: Dict[str, str] = {
     "timing": "timing",
     "noise_floor": "noise",
     "edit_style": "style",
+    "speech_regions": "vad",
 }
 ANALYSIS_KINDS = tuple(KIND_TO_TOOL)
 
@@ -101,6 +111,7 @@ TOOL_DESCRIPTIONS: Dict[str, str] = {
     "timing": "Duration and timing facts: start times, per-stream durations, A/V duration mismatch and start offset, timestamp discontinuities",
     "noise": "Noise floor, signal level and no-reference SNR estimate of one audio stream (or one channel) from short-window RMS",
     "style": "Editing-style profile: cut rate and shot-length distribution, soft and burned-in subtitle frequency / coverage / position, loudness and silence share",
+    "vad": "Speech regions of one audio stream from a voice-activity model (optional extra 'vad'; UNKNOWN without it): time ranges with probability, speech share, longest pause",
 }
 
 TOOL_CAPABILITIES: Dict[str, List[str]] = {
@@ -115,6 +126,7 @@ TOOL_CAPABILITIES: Dict[str, List[str]] = {
     "timing": ["ffprobe"],
     "noise": ["ffprobe", "ffmpeg", "filter:astats"],
     "style": ["ffprobe", "ffmpeg", "filter:scdet", "filter:ebur128", "filter:silencedetect", "filter:edgedetect"],
+    "vad": ["ffprobe", "ffmpeg"],
 }
 
 
@@ -154,6 +166,8 @@ CAPABILITY_IDS: Dict[str, str] = {
     "noise_floor": "measure.audio.noise_floor",
     # ADR-030: new id, not a collision (no other Provider measures an editing-style profile)
     "edit_style": "measure.video.edit_style",
+    # ADR-035: new id, not a collision (ffmpeg-skill's silence / scenes --speech measure level and zero crossings, not speech)
+    "speech_regions": "measure.audio.speech_regions",
 }
 
 
@@ -218,6 +232,10 @@ def skill_contract() -> Dict[str, Any]:
             "executables": ["ffprobe", "ffmpeg"],
             "executable_resolution": "PATH lookup only; not configurable through the request or the CLI",
             "media_processing": False, "network": False, "ai": False,
+            # ADR-035: the one model this package can run; fixed weights shipped in the package, CPU only, no download
+            "optional_extras": {"vad": {"kinds": ["speech_regions"], "requires": ["onnxruntime", "numpy"],
+                                        "model": "silero-vad (MIT), shipped in the package", "download_at_run_time": False,
+                                        "without": "status UNKNOWN, no regions"}},
         },
         "observation_source_format": "media-analysis/<tool>@<version>",
         "provenance": "OBSERVED",

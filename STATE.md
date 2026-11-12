@@ -1,6 +1,7 @@
 # Repository state
 
-Last updated: 2026-10-30, checked against `main` at `45d07ad` (Release v0.1.3). Every statement below was checked
+Last updated: 2026-11-12 for roadmap step 4 (`speech_regions`); sections not touched then were checked on 2026-10-30
+against `main` at `45d07ad` (Release v0.1.3). Every statement below was checked
 against the code, a command run or the GitHub API on that date; anything that could not be checked is marked
 **unverified**.
 
@@ -28,7 +29,7 @@ against the code, a command run or the GitHub API on that date; anything that co
   `highlights` (candidates of a long recording on sentence boundaries, with reasons; applause / laughter spans come
   from the caller; ADR-032).
 - Contract `media-analysis/contract@1` (`schema_versions`: contract / request / response / observation all `1`).
-  11 tools, 12 analysis kinds, derived from the analyzer registry:
+  12 tools, 13 analysis kinds, derived from the analyzer registry:
 
   | Tool | Kinds | Capability id (`provides`) |
   |---|---|---|
@@ -43,8 +44,9 @@ against the code, a command run or the GitHub API on that date; anything that co
   | `media-analysis/scenes` | `scene_detection` | `measure.video.scene_detection` |
   | `media-analysis/noise` | `noise_floor` | `measure.audio.noise_floor` (ADR-029, roadmap step 3) |
   | `media-analysis/style` | `edit_style` | `measure.video.edit_style` (ADR-030, roadmap step 7) |
+  | `media-analysis/vad` | `speech_regions` | `measure.audio.speech_regions` (ADR-035, roadmap step 4) |
 
-  All 12 `provides` entries are lifecycle `EXPERIMENTAL`. Required environment capabilities (`capability_names`):
+  All 13 `provides` entries are lifecycle `EXPERIMENTAL`. Required environment capabilities (`capability_names`):
   `ffmpeg`, `ffprobe`, `filter:astats`, `filter:ebur128`, `filter:edgedetect`, `filter:scdet`, `filter:silencedetect`.
 - Acceptance measurements (ADR-029, roadmap step 3): `noise_floor` (window-RMS noise floor / signal level /
   no-reference SNR estimate, one channel or all) for voice-enhance-skill's ISOLATE / BLEED_REDUCE acceptance, and
@@ -56,9 +58,13 @@ against the code, a command run or the GitHub API on that date; anything that co
   Burned-in subtitles are measured since ADR-033 (roadmap step 10: coverage, switches per minute, position, text height,
   regions / approximate characters, band / outline, from an edge map; no OCR); music-bed presence is listed as
   `unmeasured`.
+- Speech regions (ADR-035, roadmap step 4): `speech_regions` from the silero-vad ONNX model (MIT, shipped in
+  `media_analysis/models/`, CPU via onnxruntime) — regions with probability, speech share, longest pause. onnxruntime +
+  numpy are the optional extra `vad`; without it the result is `status: UNKNOWN` (not cached), never a guess from
+  level. `doctor` reports `extra:vad`. F1 0.943 (over music) / 0.949 (over noise) against the fixtures' labels.
 - Errors: 12 codes with exit codes 2–13 (`INVALID_INPUT` … `CACHE_MISS`), each with a class `FATAL` / `RETRYABLE` /
   `BLOCKED` (ADR-023). Execution is `local_subprocess`, ffmpeg / ffprobe found by PATH lookup only, no shell, no
-  network, no AI. Request denylist (recursive, case-insensitive): `command argv args shell cmd exec filter_complex
+  network, no generative AI (the one model is the opt-in VAD above). Request denylist (recursive, case-insensitive): `command argv args shell cmd exec filter_complex
   filter api_key token env` (ADR-024).
 - Deterministic analysis identity, cache (use / bypass / only), budget, process-group timeout (POSIX `setsid` +
   `killpg`; Windows `CREATE_NEW_PROCESS_GROUP` + `taskkill /T /F`), verification, path policy.
@@ -88,13 +94,14 @@ against the code, a command run or the GitHub API on that date; anything that co
 - No other caller found in the sibling checkouts; whether anything outside them calls it is **unverified**.
 
 ## Tests and CI
-- `python -m pytest -q`: **134 passed** locally on 2026-11-07 (Python 3.11, FFmpeg 6.1.1, Linux) from 102 test
-  functions — collected per file: `test_contract.py` 43, `test_integration.py` 43, `test_unit.py` 46, `test_evals.py` 2.
-- `python evals/run.py` 15/15 measurement evals; `python evals/contract_evals.py` 17/17 contract evals;
+- `python -m pytest -q`: **150 passed** locally on 2026-11-12 (Python 3.11, FFmpeg 6.1.1, onnxruntime 1.31.1, Linux) —
+  collected per file: `test_contract.py` 43, `test_integration.py` 46, `test_unit.py` 50, `test_evals.py` 2,
+  `test_release_labels.py` 9.
+- `python evals/run.py` 18/18 measurement evals; `python evals/contract_evals.py` 17/17 contract evals;
   `python -m pyflakes src tests evals` clean.
 - `.github/workflows/tests.yml` (push to main, every PR), real FFmpeg on every job:
   Ubuntu Python 3.9 (pinned to `ubuntu-24.04`, which still has 3.9), Ubuntu 3.11, Windows 3.11, macOS 3.11. Each job
-  runs pytest, both evals, `doctor --json`, `contract --json` + `contract --check`, and `conformance --json`.
+  installs `.[vad]`, runs pytest, both evals, `doctor --json`, `contract --json` + `contract --check`, and `conformance --json`.
 - Other workflows: `codeql.yml` (push / PR to main, weekly), `pr-labeler.yml` (release-drafter autolabeler),
   `release.yml` (see Version). On `main` at `8a9964f` (the last code commit) `tests`, `codeql` and `release` all succeeded.
 
@@ -107,12 +114,12 @@ against the code, a command run or the GitHub API on that date; anything that co
 - No MCP transport (ADR-010: not before a consumer needs one).
 
 ## NOT DONE / PLANNED
-See `ECOSYSTEM_ROADMAP.md`. Steps 1–3 and 7–10 are done (step 3: `noise_floor` and `timing.av_start_offset`, ADR-029). Still
+See `ECOSYSTEM_ROADMAP.md`. Steps 1–4 and 7–10 are done (step 4: `speech_regions`, ADR-035) (step 3: `noise_floor` and `timing.av_start_offset`, ADR-029). Still
 not measured by anyone, recorded in ADR-029: a reverberation measure (voice-enhance DEREVERB) and picture sharpness /
 exposure (video-production-agent take selection).
 
 ## NOT IN SCOPE (by design)
-AI / inference / decisions, media editing, subtitles, transcription, semantic scene understanding, plugin loading.
+AI / inference (except the opt-in fixed-weight VAD of `speech_regions`, ADR-035) / decisions, media editing, subtitles, transcription, semantic scene understanding, plugin loading.
 
 ## History (merged PRs)
 #1 Skill 0.1.0 + agent-ready contract · #2 sponsor link · #3 README landing page · #4 `provides` · #5 OS conformance

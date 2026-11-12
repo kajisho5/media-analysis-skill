@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Dict, List
 
 from .analyzers import (Analyzer, AudioAnalyzer, IntegrityAnalyzer, LoudnessAnalyzer, NoiseAnalyzer, ProbeAnalyzer, SceneAnalyzer,
-                        SilenceAnalyzer, StreamAnalyzer, StyleAnalyzer, TimingAnalyzer, VideoAnalyzer)
+                        SilenceAnalyzer, StreamAnalyzer, StyleAnalyzer, TimingAnalyzer, VadAnalyzer, VideoAnalyzer)
 from .capabilities import CapabilitySet
 from .contract import KIND_TO_TOOL, TOOL_CAPABILITIES
 from .errors import AnalysisError
@@ -52,4 +52,4 @@ class AnalyzerRegistry:
 def default_registry() -> AnalyzerRegistry:
     return AnalyzerRegistry([ProbeAnalyzer(), StreamAnalyzer(), VideoAnalyzer(), AudioAnalyzer(), SilenceAnalyzer(),
                              LoudnessAnalyzer(), IntegrityAnalyzer(), SceneAnalyzer(), TimingAnalyzer(), NoiseAnalyzer(),
-                             StyleAnalyzer()])
+                             StyleAnalyzer(), VadAnalyzer()])
