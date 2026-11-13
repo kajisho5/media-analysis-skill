@@ -522,3 +522,115 @@
   parameters, `execution.optional_extras`; the `operations[].executable` vocabulary stays `ffprobe` / `ffmpeg` (the
   model runs in-process). CI installs `.[vad]` on every job so the model path is exercised on Linux, Windows and
   macOS; the integration tests fail, not skip, when the extra is missing.
+
+## ADR-036 Highlight signals: applause / laughter from an audio-event classifier, and three signal measurements
+- Context: roadmap step 5. Picking Shorts candidates from a talk or a stream archive needs to know when the audience
+  reacts and where the delivery changes. `highlights` (ADR-032) took applause and laughter only from the caller and
+  measured nothing but window RMS. Measurement only: which span is a good clip stays with the caller (the agent,
+  video-editing); whether a cut or a level is acceptable stays with qc-skill. Every signal below is deterministic,
+  documented and timed (time ranges with a score).
+- Decision: two new kinds, both Capability `EXPERIMENTAL`.
+  - `audio_events` (tool `media-analysis/events`, `measure.audio.events`): applause and laughter spans from an
+    audio-event classifier, the optional extra `events` (onnxruntime + numpy), `UNKNOWN` (not cached) without it.
+  - `highlight_signals` (tool `media-analysis/signals`, `measure.media.highlight_signals`, filters `astats` and
+    `scdet`): speech-energy peaks, speaking-rate changes and screen-change bursts. No model; standard library and
+    ffmpeg only, so it works on the core install.
+  - Two kinds, not one, because one needs the optional runtime and the other does not: an install without the extra
+    still gets every signal it can measure.
+- Engine and licence check (`audio_events`): YAMNet, a MobileNet-v1 classifier of the 521 AudioSet classes on
+  0.975 s log-mel patches. The published Keras weights (`yamnet.h5`, 15.3 MB, sha256 `13c33089...1744`) and the
+  model / feature code are Apache-2.0 (the repository's `LICENSE`, and the header of each source file). Apache-2.0
+  allows redistribution of modified weights with the licence text, the copyright notice and a statement of the
+  changes; all three ship next to the model as `media_analysis/models/yamnet.LICENSE`. onnxruntime is MIT, numpy
+  BSD-3-Clause. The class names used (Applause, Clapping, Laughter, ...) are the AudioSet ontology's labels, written
+  in the code only as the names of the six indices it reads.
+  - Conversion: `tools/export_yamnet_onnx.py` (needs h5py and onnx; a developer tool, not part of the package)
+    builds the ONNX graph from the HDF5 weights: batch norm (centre only, no scale, epsilon 1e-4) folded into the
+    convolution before it, Keras `same` padding as explicit pads (stride 2 on an even size pads one row / column at
+    the end), weights stored as float16 and cast to float32 when the session is built. The output
+    `yamnet_patches.onnx` is 7.47 MB (sha256 `29dcb729...eeb7`, reported per observation as `engine.model_sha256`);
+    running the tool twice gives the same bytes. Checks: the reference installation test's three signals give the
+    expected classes (zeros: Silence 1.00; uniform noise: White noise first; a 440 Hz sine: Sine wave in the top 10,
+    as the reference test requires); float16 against float32 weights differ by at most 0.006 in any score over the
+    eight recordings below.
+  - Features (`events.LogMel`): the reference features re-implemented in NumPy with the same parameters — 25 ms
+    periodic Hann frames every 10 ms, 512-point FFT magnitude, 64 HTK-mel bands 125–7500 Hz, `log(mel + 0.001)`,
+    96-frame patches.
+  - Candidates not taken: PANNs (CNN14, larger, weights from a separate download); an energy / noise heuristic for
+    applause (it cannot tell applause from rain or a crowd's chatter, and nothing would tell laughter at all).
+- Measurement (`audio_events`): ffmpeg decodes the stream (all channels downmixed, or one `channel`) to 16 kHz mono
+  float, read 10 s at a time (`runner.stream_records` with the new `keep_tail`, so the last partial block is kept and
+  memory does not grow); 0.4875 s of zeros at both ends so patch i is centred on `i × hop` (`hop` 0.1 s, rounded to
+  10 ms). The model runs in fixed batches of 32 patches (the last one zero-filled) with one thread, so the same
+  patches give the same scores whatever the file length. Event score per patch = `1 − Π(1 − p)` over the event's
+  classes (applause: Applause, Clapping; laughter: Laughter, Baby laughter, Giggle, Snicker, Belly laugh, Chuckle).
+  A span opens at `threshold` (0.3 for both), stays open down to `threshold / 2`, survives dips up to `merge_gap`
+  (1 s), is the patch centres ± hop / 2 clamped to the audio, and is dropped below `min_duration` (0.5 s); each
+  carries the mean (`score`) and maximum score of its patches. Nothing is downloaded at run time (tested with
+  sockets disabled).
+- Measurement (`highlight_signals`): one ffmpeg pass gives the RMS level of every 10 ms frame of the audio
+  band-passed to 300–3400 Hz (`highpass`, `lowpass`, `asetnsamples=160`, `astats reset=1`, `ametadata print`).
+  - Speech-energy peaks: frames pooled into `energy_window` (0.5 s) windows by power mean; baseline = median of the
+    windows at or above `active_floor_db` (−60 dBFS); a peak = a run of windows at or above baseline + `peak_db`
+    (6 dB); score = the largest lift in dB.
+  - Speaking-rate changes: syllable nuclei on the envelope smoothed over 50 ms — a local maximum at or above the
+    active floor, `nucleus_db` (4 dB) above the lowest level since the previous nucleus and at least 0.08 s after
+    it. Rate = nuclei per second in a `rate_window` (3 s) moved by `rate_hop` (0.5 s), only for windows at least
+    half active; baseline = median rate; a change = a run of windows at least `rate_change` (25 %) faster or slower,
+    trimmed to the windows past half-way between the baseline and the run's extreme rate (the 3 s window would
+    otherwise widen it by about 0.75 s each side); score = extreme rate / baseline. An acoustic rate, not words:
+    no transcription is used.
+  - Screen-change bursts: scdet cuts (score ≥ `scene_threshold`, 10) grouped while gaps are at most `burst_gap`
+    (1.5 s); a group of at least `burst_min_cuts` (3) is a burst from its first to its last cut; score = cuts per
+    second inside it.
+  - A section whose stream does not exist is `not_performed` with the reason; the others are still measured.
+- Fixtures. The step's Done-when needs real reactions: a laugh and a round of applause synthesised from formants,
+  pulse trains and filtered noise bursts were tried first and are not recognised (synthetic applause scores 0.00
+  Applause and reads as Fire / Explosion / Engine; synthetic laughter reads as Speech, Laughter ≤ 0.09). So two short
+  CC0 field recordings are committed (`tests/fixtures/media/`: a 5.0 s laugh and 5.5 s of applause, mono 16 kHz,
+  levelled to −22 dBFS RMS, Opus 48 kbit/s, 62 KB together, licence in the folder). `reactions.wav` is built at test
+  time from them: pink noise (amplitude 0.001) for 20 s, the laugh from 3.0 s (true extent 3.0–8.01 s), the
+  applause from 11.0 s (11.0–16.51 s); the labels are the clips' placement, not a listener's marks.
+  `signals.mp4` is fully synthetic: six cuts 0.4 s apart at 6.0–8.0 s, a 500 Hz tone under a 4-per-second syllable
+  envelope that goes to 8 per second for 7–10 s, and +12 dB for 11–12.5 s.
+- Results (Done when: both spans within 0.5 s). Linux, onnxruntime 1.31.1, default parameters:
+
+  | fixture | laughter span (truth 3.0–8.01) | applause span (truth 11.0–16.51) |
+  |---|---|---|
+  | `reactions.wav` (`hop` 0.1, default) | **3.05–7.95** (+0.05 / −0.06) | **11.05–16.25** (+0.05 / −0.26) |
+  | same, `hop` 0.24 | 3.48–8.04 | 11.16–16.20 |
+  | same, `hop` 0.48 (the reference hop) | 3.60–7.44 (outside 0.5 s) | 11.28–15.60 (outside) |
+  | pink noise at −54 dBFS RMS (SNR 32 dB) | 3.05–8.25 | 11.15–16.25 |
+  | pink noise at −46 dBFS (24 dB) | 3.55–7.95 | 11.05–16.25 |
+  | pink noise at −39 dBFS (17 dB) | 3.95–7.45 | 11.05–16.25 |
+  | pink noise at −34 dBFS (12 dB) | none | 11.05–16.25 |
+
+  No span at all on the synthetic speech, speech over music, speech over noise, music, talk, tone-burst and silence
+  fixtures (`test_audio_events_nothing_on_speech_music_tones_or_noise`). On eleven longer openly licensed recordings
+  that are not committed (default parameters, seconds found):
+
+  | recording | applause | laughter |
+  |---|---|---|
+  | applause, four recordings (the last at a tennis match) | 8.5, 7.4, 7.0, 2.0 | 0 each |
+  | laughter then applause | 7.0 (from 2.85 s) | 1.6 (0.55–2.15 s) |
+  | cheering crowd / rhythmic clapping and cheers / applause with whistles | 0.5 / 0 / 0 | 0 / 0.5 / 0 |
+  | laughter, four recordings (women, men talking and laughing, mixed group, theatre audience) | 0 each | 86.5, 23.8, 22.9, 53.7 |
+
+  The two committed clips are cut from two of these. A speech passage at the end of one applause recording gave
+  neither. Applause is the steadier class (scores 0.8–1.0); laughter scores 0.3–0.7 and loses its edges first as
+  noise rises (above), and cheering or rhythmic clapping is mostly not applause to the model. The default
+  threshold is 0.3, and a recording with a loud bed may need a lower `laughter_threshold`. `highlight_signals`
+  on `signals.mp4`: energy peak 11.0–12.5 s (+12.0 dB), rate change 6.75–10.25 s faster ×2.0, one burst 6.0–8.0 s of
+  six cuts (3.0 per second).
+- Cost: about 1.5 ms per patch on one CPU thread, so `hop` 0.1 s is about 55 s per hour of audio and `hop` 0.24 s
+  about 23 s; `highlight_signals` is two ffmpeg passes.
+- `highlights` (ADR-032) now takes an `audio_events` observation (or its `data`) as `--signals` unchanged; it still
+  does not run the model itself, so its output does not change for existing callers.
+- Limits: laughter detection weakens below about 25 dB SNR and with talking over the laugh; a long burst of cheering
+  is not applause (Cheering is not one of the applause classes); spans are at 0.1 s resolution with edges typically
+  within 0.1–0.3 s; the speaking rate counts energy nuclei, so music with a strong pulse also has a "rate"; screen
+  bursts depend on the scdet threshold like `scene_detection`.
+- Versions: `events` and `signals` `algorithm_version` "1". Contract `@1` additive: two tools, two kinds, two
+  `provides` entries, their parameters, `execution.optional_extras.events`; nothing existing changed (checked by
+  comparing the contract document before and after). CI installs `.[vad,events]` on every job; the `audio_events`
+  integration tests fail, not skip, when the extra is missing. `doctor` reports `extra:events`.

@@ -1,4 +1,6 @@
-"""Synthetic test fixtures, generated with ffmpeg at test time (nothing binary is committed).
+"""Test fixtures, generated with ffmpeg at test time. The only committed media are two short CC0 recordings in
+tests/fixtures/media/ (a laugh and a round of applause, see the LICENSE there): the audio-event classifier does not
+recognise synthesised ones (ADR-036). Everything else is synthetic.
 
 Every fixture has a known construction so expected values in tests and evals are derivable from it, not guessed:
 
@@ -36,6 +38,13 @@ Every fixture has a known construction so expected values in tests and evals are
                   for the whole 12 s, 48 kHz (resampled by the analyzer)
   speech_noise.wav  speech.wav over pink noise (amplitude 0.25, seed 3) for the whole 12 s, 48 kHz
   music.wav       the music bed alone, 12 s, 48 kHz: no speech anywhere
+  reactions.wav   20 s, mono PCM 16-bit 16 kHz: pink noise amplitude 0.001 (seed 5) throughout, media/laugh.opus from
+                  3.0 s and media/applause.opus from 11.0 s; their true extents are REACTION_LABELS = reaction_labels()
+                  (start + the clip's decoded duration)
+  signals.mp4     14 s, 320x180 @25 H.264 + mono AAC 48 kHz. Video: solid-colour shots of 150, 10, 10, 10, 10, 10, 150
+                  frames, so six cuts 0.4 s apart at 6.0-8.0 s (one burst) and none elsewhere. Audio: a 500 Hz tone,
+                  amplitude 0.05, under a raised-cosine envelope of 4 syllables per second, 8 per second for t = 7..10 s
+                  (a speaking-rate change), the amplitude x4 (+12 dB) for t = 11..12.5 s (an energy peak)
 """
 from __future__ import annotations
 
@@ -147,6 +156,26 @@ def write_speech(path: Path) -> List[Tuple[float, float]]:
     return labels
 
 
+# audio_events fixture (ADR-036): clip -> start time in reactions.wav
+MEDIA = Path(__file__).resolve().parent / "media"
+REACTIONS = (("laughter", "laugh.opus", 3.0), ("applause", "applause.opus", 11.0))
+REACTIONS_SECONDS = 20.0
+# highlight_signals fixture (ADR-036)
+SIGNALS_SHOTS = (150, 10, 10, 10, 10, 10, 150)
+SIGNALS_AUDIO = ("0.05*(1+3*between(t\\,11\\,12.5))*sin(2*PI*500*t)*(0.5-0.5*cos(2*PI*if(between(t\\,7\\,10)\\,8\\,4)*t))")
+
+
+def _decoded_seconds(path: Path) -> float:
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+                       capture_output=True, text=True, check=True)
+    return float(r.stdout.strip())
+
+
+def reaction_labels() -> Dict[str, Tuple[float, float]]:
+    """True extents of the laugh and the applause in reactions.wav, in seconds."""
+    return {name: (start, round(start + _decoded_seconds(MEDIA / clip), 4)) for name, clip, start in REACTIONS}
+
+
 def available() -> bool:
     return shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
 
@@ -189,7 +218,7 @@ def build_all(directory: Path) -> Dict[str, Path]:
         "noisy": "noisy.wav", "cleaned": "cleaned.wav", "av_offset": "av_offset.mkv",
         "style_a": "style_a.mp4", "style_b": "style_b.mkv", "portrait": "portrait.mp4", "talk": "talk.wav",
         "burned": "burned.mp4", "clean": "clean.mp4", "speech": "speech.wav", "speech_music": "speech_music.wav",
-        "speech_noise": "speech_noise.wav", "music": "music.wav"}.items()}
+        "speech_noise": "speech_noise.wav", "music": "music.wav", "reactions": "reactions.wav", "signals": "signals.mp4"}.items()}
     _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-f", "lavfi", "-i", f"aevalsrc='{TONE_GATED}':s=48000", "-t", "6",
           *X264, "-c:a", "aac", "-shortest", str(f["av"])])
     _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-t", "4", *X264, str(f["video_only"])])
@@ -234,6 +263,14 @@ def build_all(directory: Path) -> Dict[str, Path]:
                            ("speech_noise", ["-f", "lavfi", "-i", f"anoisesrc=c=pink:a=0.25:r=48000:seed=3:d={bed}"])):
         _run(["-i", str(f["speech"]), *bed_input, "-filter_complex", "[0:a]aresample=48000[s];[s][1:a]amix=inputs=2:duration=first:normalize=0",
               "-c:a", "pcm_s16le", "-ar", "48000", str(f[key])])
+    clips = [arg for _, clip, _ in REACTIONS for arg in ("-i", str(MEDIA / clip))]
+    delays = ";".join(f"[{i + 1}:a]aresample=16000,adelay={int(start * 1000)}:all=1[r{i}]" for i, (_, _, start) in enumerate(REACTIONS))
+    _run(["-f", "lavfi", "-i", f"anoisesrc=c=pink:a=0.001:r=16000:seed=5:d={REACTIONS_SECONDS:g}", *clips, "-filter_complex",
+          delays + ";[0:a]" + "".join(f"[r{i}]" for i in range(len(REACTIONS))) + f"amix=inputs={len(REACTIONS) + 1}:duration=first:normalize=0",
+          "-c:a", "pcm_s16le", "-ar", "16000", str(f["reactions"])])
+    inputs, graph = _shots_video(SIGNALS_SHOTS)
+    _run([*inputs, "-f", "lavfi", "-i", f"aevalsrc='{SIGNALS_AUDIO}':s=48000", "-filter_complex", graph, "-map", "[v]",
+          "-map", f"{len(SIGNALS_SHOTS)}:a", "-t", "14", *X264, "-c:a", "aac", str(f["signals"])])
     data = bytearray(f["av"].read_bytes())
     mid = len(data) // 2
     data[mid:mid + 3000] = b"\x00" * 3000

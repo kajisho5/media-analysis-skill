@@ -11,9 +11,10 @@ Inputs and signals:
                     segment speaker labels when present.
     energy          measured here: RMS level of consecutive windows of the audio (ffmpeg astats, the same method as
                     `noise_floor`); a span's lift is its mean window level minus the recording's median.
-    applause,       spans passed in by the caller (`--signals`), for example from an audio classifier the caller runs;
-    laughter        this Skill does not detect them itself (roadmap step 5). A reaction counts for a span when it
-                    starts inside it or within `reaction_window` seconds after its end.
+    applause,       spans passed in by the caller (`--signals`): either `{applause: [...], laughter: [...]}` or the result
+    laughter        of this Skill's `audio_events` kind (ADR-036; its observation or its data), which this command does not
+                    run itself. A reaction counts for a span when it starts inside it or within `reaction_window`
+                    seconds after its end.
     keywords        caller-supplied words counted in the span's text (case-insensitive, whole words).
 
 This lists candidates only. Nothing is cut, rendered or written except the JSON document; which candidate to use is
@@ -112,8 +113,28 @@ def sentences_from_transcript(doc: Any) -> List[Dict[str, Any]]:
 
 
 # ---- signals
+def _from_audio_events(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The spans of an `audio_events` observation (or of its data), as `{applause: [...], laughter: [...]}`; None when the
+    document is not one."""
+    if doc.get("kind") == "audio_events" and isinstance(doc.get("data"), dict):
+        doc = doc["data"]
+    if not (isinstance(doc.get("status"), str) and ("applause" in doc or "laughter" in doc) and "spans" not in doc):
+        return None
+    if doc["status"] != "MEASURED":
+        raise AnalysisError("INVALID_INPUT", "the audio_events result carries no spans (status is not MEASURED)",
+                            {"status": doc["status"], "reason": doc.get("reason")})
+    out: Dict[str, Any] = {"source": "audio_events"}
+    for name in ("applause", "laughter"):
+        ev = doc.get(name)
+        if isinstance(ev, dict) and isinstance(ev.get("spans"), list):
+            out[name] = ev["spans"]
+    return out
+
+
 def parse_signals(doc: Any) -> Dict[str, List[Dict[str, float]]]:
-    """`{"applause": [{start, end, score?}], "laughter": [...]}` (either key optional)."""
+    """`{"applause": [{start, end, score?}], "laughter": [...]}` (either key optional), or an `audio_events` result."""
+    if isinstance(doc, dict):
+        doc = _from_audio_events(doc) or doc
     if not isinstance(doc, dict):
         raise AnalysisError("INVALID_INPUT", "signals must be an object {applause: [...], laughter: [...]}")
     unknown = [k for k in doc if k not in ("applause", "laughter", "source")]
@@ -292,7 +313,7 @@ def highlight_candidates(input_path: str, caps: CapabilitySet, transcript: Any, 
     not_measured = []
     for name in ("applause", "laughter"):
         if name not in sig:
-            not_measured.append({"item": name, "reason": f"no {name} spans were given (--signals); this Skill does not detect {name} itself"})
+            not_measured.append({"item": name, "reason": f"no {name} spans were given (--signals); measure them with the audio_events kind and pass its result"})
     if not any(s["speaker"] for s in sents):
         not_measured.append({"item": "speaker_changes", "reason": "the transcript carries no speaker labels"})
     if not kws:

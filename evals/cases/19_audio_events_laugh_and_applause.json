@@ -1,0 +1,16 @@
+{
+  "id": "19_audio_events_laugh_and_applause",
+  "fixture": "reactions",
+  "kind": "audio_events",
+  "derivation": "reactions.wav: a 5.0 s CC0 recording of laughter placed at 3.0 s (true extent 3.0-8.01 s) and a 5.5 s CC0 recording of applause at 11.0 s (11.0-16.51 s), each levelled to -22 dBFS RMS, over pink noise of amplitude 0.001 for the whole 20 s (reaction_labels()). One span each, start and end within 0.5 s of the true extent (the roadmap step 5 Done-when). Needs the optional extra 'events'",
+  "expect": [
+    {"path": "data.status", "value": "MEASURED"},
+    {"path": "data.laughter.span_count", "value": 1},
+    {"path": "data.laughter.spans.0.start", "op": "approx", "value": 3.0, "tolerance": 0.5},
+    {"path": "data.laughter.spans.0.end", "op": "approx", "value": 8.0065, "tolerance": 0.5},
+    {"path": "data.applause.span_count", "value": 1},
+    {"path": "data.applause.spans.0.start", "op": "approx", "value": 11.0, "tolerance": 0.5},
+    {"path": "data.applause.spans.0.end", "op": "approx", "value": 16.5065, "tolerance": 0.5},
+    {"path": "data.engine.licence", "value": "Apache-2.0"}
+  ]
+}

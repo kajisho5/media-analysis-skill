@@ -79,6 +79,31 @@ PARAMETER_SCHEMAS: Dict[str, Dict[str, Dict[str, Any]]] = {
         "min_silence_duration": {"type": _NUM, "default": 0.1, "min": 0.032, "max": 60.0},
         "speech_pad": {"type": _NUM, "default": 0.03, "min": 0.0, "max": 5.0},
     },
+    # ADR-036: applause / laughter spans from the audio-event classifier; channel -1 downmixes every channel
+    "audio_events": {
+        "stream": {"type": _INT, "default": 0, "min": 0, "max": 63},
+        "channel": {"type": _INT, "default": -1, "min": -1, "max": 63},
+        "hop": {"type": _NUM, "default": 0.1, "min": 0.05, "max": 0.96},
+        "applause_threshold": {"type": _NUM, "default": 0.3, "min": 0.05, "max": 0.95},
+        "laughter_threshold": {"type": _NUM, "default": 0.3, "min": 0.05, "max": 0.95},
+        "min_duration": {"type": _NUM, "default": 0.5, "min": 0.0, "max": 60.0},
+        "merge_gap": {"type": _NUM, "default": 1.0, "min": 0.0, "max": 60.0},
+    },
+    # ADR-036: speech-energy peaks, speaking-rate changes and screen-change bursts; a missing stream is not_performed
+    "highlight_signals": {
+        "audio_stream": {"type": _INT, "default": 0, "min": 0, "max": 63},
+        "video_stream": {"type": _INT, "default": 0, "min": 0, "max": 63},
+        "energy_window": {"type": _NUM, "default": 0.5, "min": 0.05, "max": 10.0},
+        "peak_db": {"type": _NUM, "default": 6.0, "min": 0.5, "max": 40.0},
+        "active_floor_db": {"type": _NUM, "default": -60.0, "min": -120.0, "max": 0.0},
+        "rate_window": {"type": _NUM, "default": 3.0, "min": 1.0, "max": 30.0},
+        "rate_hop": {"type": _NUM, "default": 0.5, "min": 0.1, "max": 10.0},
+        "rate_change": {"type": _NUM, "default": 0.25, "min": 0.05, "max": 5.0},
+        "nucleus_db": {"type": _NUM, "default": 4.0, "min": 0.5, "max": 30.0},
+        "scene_threshold": {"type": _NUM, "default": 10.0, "min": 0.0, "max": 100.0},
+        "burst_gap": {"type": _NUM, "default": 1.5, "min": 0.04, "max": 60.0},
+        "burst_min_cuts": {"type": _INT, "default": 3, "min": 2, "max": 1000},
+    },
 }
 
 # kind -> tool (one tool serves one or more kinds)
@@ -96,6 +121,8 @@ KIND_TO_TOOL: Dict[str, str] = {
     "noise_floor": "noise",
     "edit_style": "style",
     "speech_regions": "vad",
+    "audio_events": "events",
+    "highlight_signals": "signals",
 }
 ANALYSIS_KINDS = tuple(KIND_TO_TOOL)
 
@@ -112,6 +139,8 @@ TOOL_DESCRIPTIONS: Dict[str, str] = {
     "noise": "Noise floor, signal level and no-reference SNR estimate of one audio stream (or one channel) from short-window RMS",
     "style": "Editing-style profile: cut rate and shot-length distribution, soft and burned-in subtitle frequency / coverage / position, loudness and silence share",
     "vad": "Speech regions of one audio stream from a voice-activity model (optional extra 'vad'; UNKNOWN without it): time ranges with probability, speech share, longest pause",
+    "events": "Applause and laughter spans of one audio stream from an audio-event classifier (optional extra 'events'; UNKNOWN without it): time ranges with a score",
+    "signals": "Highlight signals measured, not judged: speech-energy peaks, speaking-rate changes and screen-change bursts, each as time ranges with a score",
 }
 
 TOOL_CAPABILITIES: Dict[str, List[str]] = {
@@ -127,6 +156,8 @@ TOOL_CAPABILITIES: Dict[str, List[str]] = {
     "noise": ["ffprobe", "ffmpeg", "filter:astats"],
     "style": ["ffprobe", "ffmpeg", "filter:scdet", "filter:ebur128", "filter:silencedetect", "filter:edgedetect"],
     "vad": ["ffprobe", "ffmpeg"],
+    "events": ["ffprobe", "ffmpeg"],
+    "signals": ["ffprobe", "ffmpeg", "filter:astats", "filter:scdet"],
 }
 
 
@@ -168,6 +199,10 @@ CAPABILITY_IDS: Dict[str, str] = {
     "edit_style": "measure.video.edit_style",
     # ADR-035: new id, not a collision (ffmpeg-skill's silence / scenes --speech measure level and zero crossings, not speech)
     "speech_regions": "measure.audio.speech_regions",
+    # ADR-036: new ids, not collisions (no other Provider measures applause / laughter spans or these signal spans;
+    # qc-skill judges, it does not list moments)
+    "audio_events": "measure.audio.events",
+    "highlight_signals": "measure.media.highlight_signals",
 }
 
 
@@ -235,7 +270,11 @@ def skill_contract() -> Dict[str, Any]:
             # ADR-035: the one model this package can run; fixed weights shipped in the package, CPU only, no download
             "optional_extras": {"vad": {"kinds": ["speech_regions"], "requires": ["onnxruntime", "numpy"],
                                         "model": "silero-vad (MIT), shipped in the package", "download_at_run_time": False,
-                                        "without": "status UNKNOWN, no regions"}},
+                                        "without": "status UNKNOWN, no regions"},
+                                # ADR-036: the audio-event classifier, same runtime, its own extra
+                                "events": {"kinds": ["audio_events"], "requires": ["onnxruntime", "numpy"],
+                                           "model": "YAMNet (Apache-2.0), converted to ONNX and shipped in the package",
+                                           "download_at_run_time": False, "without": "status UNKNOWN, no spans"}},
         },
         "observation_source_format": "media-analysis/<tool>@<version>",
         "provenance": "OBSERVED",

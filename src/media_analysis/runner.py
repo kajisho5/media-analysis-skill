@@ -58,11 +58,13 @@ def run_argv(argv: List[str], timeout: Optional[float]) -> RunResult:
     return RunResult(proc.returncode, out or "", err or "", round(time.monotonic() - t0, 3))
 
 
-def stream_records(argv: List[str], timeout: Optional[float], record_size: int, on_record: Callable[[bytes], None]) -> RunResult:
+def stream_records(argv: List[str], timeout: Optional[float], record_size: int, on_record: Callable[[bytes], None],
+                   keep_tail: bool = False) -> RunResult:
     """Run an executable whose stdout is a sequence of fixed-size binary records (raw video frames) and hand each
     record to `on_record` as it arrives, so memory stays at one record however long the input is. stderr is drained
     on a thread (an undrained pipe would stall the child) and returned as text. A watchdog kills the whole process
-    group at the deadline (ANALYZER_TIMEOUT), the same as run_argv; a trailing partial record is dropped."""
+    group at the deadline (ANALYZER_TIMEOUT), the same as run_argv; a trailing partial record is dropped, or handed
+    to `on_record` as a shorter last record with keep_tail (a stream of samples read in blocks)."""
     _check_argv(argv)
     if record_size <= 0:
         raise ValueError("record_size must be positive")
@@ -95,6 +97,8 @@ def stream_records(argv: List[str], timeout: Optional[float], record_size: int, 
             while len(buf) >= record_size:
                 on_record(bytes(buf[:record_size]))
                 del buf[:record_size]
+        if keep_tail and buf:
+            on_record(bytes(buf))
         proc.wait()
     except BaseException:
         _kill_group(proc)

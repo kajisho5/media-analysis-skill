@@ -16,6 +16,7 @@ import tempfile
 from typing import Any, Dict, List, Optional
 
 from . import PACKAGE_NAME, SKILL_ID, VERSION
+from .analyzers.events import events_status
 from .analyzers.vad import vad_status
 from .budget import Budget
 from .cache import ObservationCache
@@ -169,7 +170,7 @@ def build_parser() -> argparse.ArgumentParser:
     hl = sub.add_parser("highlights", help="highlight candidates of a long recording on sentence boundaries, with reasons (ADR-032)")
     hl.add_argument("input")
     hl.add_argument("--transcript", required=True, help="transcript JSON: {segments: [{start, end, text, words?, speaker_id?}]}")
-    hl.add_argument("--signals", help="caller-supplied spans: {applause: [{start, end}], laughter: [...]}")
+    hl.add_argument("--signals", help="applause / laughter spans: {applause: [{start, end}], laughter: [...]}, or an audio_events result")
     hl.add_argument("--keyword", action="append", help="keyword or phrase counted in each span (repeatable)")
     hl.add_argument("--stream", type=int, default=0, help="audio stream ordinal (default 0)")
     hl.add_argument("--window", type=float, default=0.5, help="energy window in seconds (default 0.5)")
@@ -262,6 +263,9 @@ def doctor_report(workspace: Optional[str] = None, cache_dir: Optional[str] = No
     vad = vad_status()      # optional extra: missing it leaves speech_regions UNKNOWN, it does not degrade the doctor status
     checks["extra:vad"] = {"status": "ok" if vad["available"] else "missing", "optional": True, "kinds": ["speech_regions"],
                            "runtime": vad["runtime"], "model": vad["model"], "detail": vad["detail"]}
+    ev = events_status()    # optional extra: missing it leaves audio_events UNKNOWN (ADR-036)
+    checks["extra:events"] = {"status": "ok" if ev["available"] else "missing", "optional": True, "kinds": ["audio_events"],
+                              "runtime": ev["runtime"], "model": ev["model"], "detail": ev["detail"]}
     try:
         registry = default_registry()
         rows = registry.availability(caps)
