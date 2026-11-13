@@ -51,7 +51,7 @@ lazily-run, shared ffprobe result. Analyzers never see `asset_id`, never write f
 
 Analyzers: `ProbeAnalyzer` (media_probe), `StreamAnalyzer` (stream_layout), `VideoAnalyzer` (video_format),
 `AudioAnalyzer` (audio_format), `SilenceAnalyzer`, `LoudnessAnalyzer`, `IntegrityAnalyzer`, `SceneAnalyzer`
-(scene_detection), `TimingAnalyzer` (duration, timing), `NoiseAnalyzer` (noise_floor), `StyleAnalyzer` (edit_style), `VadAnalyzer` (speech_regions; voice-activity model in-process, optional extra `vad`, ADR-035). The registry is a literal list; there is no plugin loader.
+(scene_detection), `TimingAnalyzer` (duration, timing), `NoiseAnalyzer` (noise_floor), `StyleAnalyzer` (edit_style), `VadAnalyzer` (speech_regions; voice-activity model in-process, optional extra `vad`, ADR-035), `EventsAnalyzer` (audio_events; audio-event classifier in-process, optional extra `events`, ADR-036), `SignalsAnalyzer` (highlight_signals; speech-band envelope and scdet, ADR-036). The registry is a literal list; there is no plugin loader.
 
 `library.py` (ADR-031) is a workflow on top of the engine, not an analyzer: it runs `media_probe` / `scene_detection` /
 `loudness` per clip of a folder and keeps the results in one index file inside the workspace. `highlights.py` (ADR-032) measures windowed RMS of

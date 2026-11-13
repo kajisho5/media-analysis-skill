@@ -20,6 +20,8 @@ and the contract disagree.
 | `media-analysis/noise` | `noise_floor` | ffprobe, ffmpeg, filter:astats | probe + ffmpeg `-af [pan,]asetnsamples,astats=reset=1,ametadata=print -f null -` |
 | `media-analysis/style` | `edit_style` | ffprobe, ffmpeg, filter:scdet, filter:ebur128, filter:silencedetect, filter:edgedetect | probe + ffmpeg `-vf scdet,metadata=print -f null -` + each text subtitle stream `-c:s ass -f ass -` (stdout) + `-af ebur128,silencedetect -f null -` + frames `fps,scale,edgedetect,hstack -f rawvideo -` (stdout) |
 | `media-analysis/vad` | `speech_regions` | ffprobe, ffmpeg (+ optional extra `vad`: onnxruntime, numpy) | probe + ffmpeg `-af [pan,]aresample=16000 -ac 1 -f f32le -` (stdout) into the voice-activity model in-process |
+| `media-analysis/events` | `audio_events` | ffprobe, ffmpeg (+ optional extra `events`: onnxruntime, numpy) | probe + ffmpeg `-af [pan,]aresample=16000 -ac 1 -f f32le -` (stdout) into the audio-event classifier in-process |
+| `media-analysis/signals` | `highlight_signals` | ffprobe, ffmpeg, filter:astats, filter:scdet | probe + ffmpeg `-af aresample,aformat,highpass,lowpass,asetnsamples,astats=reset=1,ametadata=print -f null -` + `-vf scdet,metadata=print -f null -` |
 
 Every analyzer runs ffprobe at most once per request (shared context). Stream ordinals (`stream` parameter) follow
 ffmpeg's `0:v:N` / `0:a:N` numbering; attached pictures (cover art) are not video streams.
@@ -153,6 +155,55 @@ engine{name, model, model_sha256, runtime, device, licence}, method` (ADR-035).
 - Not ffmpeg-skill `silence` (a level threshold: music or noise count as sound) nor `scenes --speech` (a
   zero-crossing ratio per second, not a speech decision); the comparison on the same fixtures is in ADR-035.
 
+## `audio_events` (parameters `stream, channel, hop, applause_threshold, laughter_threshold, min_duration, merge_gap`)
+
+`status, applause{spans[{start, end, duration, score, max_score}], span_count, seconds, threshold, release_threshold,
+max_patch_score, classes[{index, name}]}, laughter{...}, stream_index, stream_ordinal, channel, channels, hop,
+patch_seconds, analysed_seconds, patch_count, engine{name, model, model_sha256, runtime, device, licence, classes},
+method` (ADR-036).
+
+- Where the audience applauds or laughs, from an audio-event classifier (YAMNet, Apache-2.0 code and weights,
+  converted to ONNX and shipped in the package as `media_analysis/models/yamnet_patches.onnx` with its licence and
+  change notice) run on the CPU with onnxruntime. Nothing is downloaded at run time. Install the runtime with
+  `pip install 'media-analysis-skill[events]'`.
+- Without the extra, `status` is `UNKNOWN`, `missing` / `install` say what to install, and `applause` / `laughter`
+  are `null`. Applause is never inferred from level or noise; an `UNKNOWN` result is not cached.
+- The stream (all channels downmixed, or one `channel`) is resampled to 16 kHz mono; one 0.975 s log-mel patch every
+  `hop` seconds (default 0.1, rounded to 10 ms) is scored, patch i centred on `i × hop`. Event score = `1 − Π(1 − p)`
+  over the event's classes (applause: Applause, Clapping; laughter: Laughter, Baby laughter, Giggle, Snicker, Belly
+  laugh, Chuckle / chortle). A span opens at the event's threshold (0.3), stays open while patches are at or above
+  `release_threshold` (half of it), survives dips up to `merge_gap` (1 s), runs from the first to the last patch
+  centre ± hop / 2 (clamped to the audio), and is dropped when shorter than `min_duration` (0.5 s). `score` is the
+  mean patch score inside the span.
+- Span edges are typically within 0.1–0.3 s of the sound; laughter weakens first under noise and talk (ADR-036 has
+  the measured figures). Cheering alone is not applause. Measured, not judged: which reaction makes a clip is the
+  caller's decision. `media-analysis highlights --signals` takes this observation as it is.
+
+## `highlight_signals` (parameters `audio_stream, video_stream, energy_window, peak_db, active_floor_db, rate_window, rate_hop, rate_change, nucleus_db, scene_threshold, burst_gap, burst_min_cuts`)
+
+`duration, audio_stream_index, analysed_seconds, video_stream_index, speech_energy_peaks{status, spans[{start, end,
+duration, score, mean_lift_db, peak_level_dbfs, peak_time}], span_count, baseline_dbfs, active_windows, window,
+window_count, peak_db, band_hz, unit}, speaking_rate_changes{status, spans[{start, end, duration, direction, rate,
+score}], span_count, baseline_rate, nucleus_count, window, hop, change, window_count, rated_windows, unit},
+screen_change_bursts{status, spans[{start, end, duration, cut_count, score}], span_count, cut_count, cut_times,
+threshold, burst_gap, burst_min_cuts, unit}, method` (ADR-036). No model.
+
+- The audio is band-passed to the speech band (300–3400 Hz) and measured as RMS per 10 ms frame (astats).
+- `speech_energy_peaks`: frames pooled into `energy_window` windows (power mean); baseline = median of the windows at
+  or above `active_floor_db`; a peak is a run of windows at or above baseline + `peak_db`; `score` = the largest lift
+  over the baseline in dB.
+- `speaking_rate_changes`: syllable nuclei on the 50 ms-smoothed envelope (a local maximum at or above
+  `active_floor_db`, `nucleus_db` above the lowest level since the previous nucleus, at least 0.08 s after it); rate =
+  nuclei per second in a `rate_window` moved by `rate_hop` (windows less than half active have no rate); baseline =
+  median rate. A change is a run of windows at least `rate_change` faster or slower than the baseline, trimmed to the
+  windows past half-way to the run's extreme rate; `score` = extreme rate / baseline, `direction` faster / slower.
+  It counts acoustic nuclei, not words.
+- `screen_change_bursts`: scdet cuts with score >= `scene_threshold` (the cut list is `cut_times`); a burst is a run
+  of cuts with gaps of at most `burst_gap` seconds and at least `burst_min_cuts` cuts, from its first to its last
+  cut; `score` = cuts per second inside it.
+- A section whose stream does not exist is `{status: "not_performed", reason}`; an input with neither stream is
+  `UNSUPPORTED_FORMAT`. Signals only: ranking them into candidates is `highlights` (or the caller's) work.
+
 ## `edit_style` (parameters `video_stream, audio_stream, threshold, min_shot_duration, silence_threshold_db, silence_min_duration`)
 
 `profile_schema` (`media-analysis/edit-style@1`), `duration`, `video{...}`, `subtitles{...}`, `audio{...}`,
@@ -248,6 +299,6 @@ speaker_changes, keywords}, candidate_count, candidates[], not_measured[{item, r
   `--reaction-window` (3 s) after it; keywords = hits per sentence (capped at 1; whole words, phrases and text without
   spaces by substring); speaker_edges = 0.5 per edge that is a speaker change or the recording's start / end. The
   best-scoring candidates that do not overlap are returned (ties: earlier, then shorter).
-- `--signals`: `{applause: [{start, end}], laughter: [...], source?}` from the caller; this Skill does not detect
-  applause or laughter. Missing signals, keywords or speaker labels are listed in `not_measured`.
+- `--signals`: `{applause: [{start, end}], laughter: [...], source?}`, or an `audio_events` observation (or its
+  `data`) as it is (ADR-036); `highlights` itself does not run the classifier. Missing signals, keywords or speaker labels are listed in `not_measured`.
 - The audio stream must exist (`UNSUPPORTED_FORMAT` otherwise). Nothing is cut or written.

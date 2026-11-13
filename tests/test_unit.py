@@ -951,3 +951,134 @@ def test_speech_regions_contract_entries():
     assert PARAMETER_SCHEMAS["speech_regions"]["threshold"]["default"] == 0.5
     extra = skill_contract()["execution"]["optional_extras"]["vad"]
     assert extra["kinds"] == ["speech_regions"] and extra["download_at_run_time"] is False
+
+
+# ---- audio_events spans / UNKNOWN (ADR-036); the model itself runs in test_integration
+def test_audio_event_spans_hysteresis_merge_and_min_duration():
+    from media_analysis.analyzers.events import spans
+    hop = 0.1
+    # 10 patches on, 3 dip to 0.2 (>= release 0.15: still on), 10 on, 15 off (1.5 s > merge_gap 1.0: closes), 3 on
+    # (0.3 s < min_duration 0.5: dropped), 5 off
+    v = [0.8] * 10 + [0.2] * 3 + [0.7] * 10 + [0.0] * 15 + [0.9] * 3 + [0.0] * 5
+    s = spans(v, hop, threshold=0.3, min_duration=0.5, merge_gap=1.0, total=4.6)
+    assert len(s) == 1 and s[0]["start"] == 0.0 and s[0]["end"] == 2.25        # centres 0..2.2, +/- hop / 2, clamped at 0
+    assert s[0]["max_score"] == 0.8 and s[0]["score"] == round((0.8 * 10 + 0.2 * 3 + 0.7 * 10) / 23, 4)
+    # a gap shorter than merge_gap below the release level does not split
+    joined = spans([0.8] * 10 + [0.0] * 5 + [0.8] * 10, hop, 0.3, 0.5, 1.0, 10.0)
+    assert [(x["start"], x["end"]) for x in joined] == [(0.0, 2.45)]
+    split = spans([0.8] * 10 + [0.0] * 12 + [0.8] * 10, hop, 0.3, 0.5, 1.0, 10.0)
+    assert [(x["start"], x["end"]) for x in split] == [(0.0, 0.95), (2.15, 3.15)]
+    # a value between release and threshold alone never opens a span; the end is clamped to the audio
+    assert spans([0.2] * 30, hop, 0.3, 0.0, 1.0, 10.0) == [] and spans([], hop, 0.3, 0.5, 1.0, 1.0) == []
+    assert spans([0.9] * 5, hop, 0.3, 0.0, 1.0, 0.42)[0]["end"] == 0.42
+
+
+def test_audio_event_score_is_any_of_the_classes():
+    import numpy as np
+    from media_analysis.analyzers.events import EVENT_CLASSES, event_scores, mel_matrix
+    rows = [[0.0] * 521, [0.0] * 521]
+    rows[1][62], rows[1][58] = 0.5, 0.5
+    assert event_scores(np, rows, [i for i, _ in EVENT_CLASSES["applause"]]) == [0.0, 0.75]
+    m = mel_matrix(np)
+    assert m.shape == (257, 64) and float(m[0].sum()) == 0.0 and float(m.min()) >= 0.0
+    assert [n for _, n in EVENT_CLASSES["applause"]] == ["Applause", "Clapping"] and len(EVENT_CLASSES["laughter"]) == 6
+
+
+def test_audio_events_unknown_without_the_extra_is_not_cached(monkeypatch):
+    from media_analysis.analyzers import events
+    probe = {"container": {"duration": 3.0}, "streams": []}
+    stream = {"index": 0, "type": "audio", "audio": {"channels": 1, "sample_rate": 16000}}
+    monkeypatch.setattr(events, "events_status", lambda: {"available": False, "missing": ["onnxruntime"], "runtime": None,
+                                                          "model": events.MODEL_FILE, "detail": "missing: " + events.INSTALL_HINT})
+    monkeypatch.setattr(events, "select_stream", lambda p, t, n: stream)
+
+    class Ctx:
+        operations = []
+
+        def probe(self):
+            return probe
+
+        def exe(self, name):
+            raise AssertionError("no executable may run for an UNKNOWN result")
+
+    a = events.EventsAnalyzer()
+    params = {"stream": 0, "channel": -1, "hop": 0.1, "applause_threshold": 0.3, "laughter_threshold": 0.3, "min_duration": 0.5, "merge_gap": 1.0}
+    d = a.analyze(Ctx(), "audio_events", params)
+    assert d["status"] == "UNKNOWN" and d["applause"] is None and d["laughter"] is None and d["engine"] is None
+    assert d["missing"] == ["onnxruntime"] and "[events]" in d["install"] and d["hop"] == 0.1
+    assert a.cacheable(d) is False and a.cacheable({"status": "MEASURED"}) is True
+    assert [op["executable"] for op in a.plan(Ctx(), "audio_events", params)] == ["ffprobe"]
+
+
+def test_highlight_kinds_contract_entries():
+    from media_analysis.contract import CAPABILITY_IDS, KIND_TO_TOOL, PARAMETER_SCHEMAS, TOOL_CAPABILITIES, skill_contract
+    assert KIND_TO_TOOL["audio_events"] == "events" and CAPABILITY_IDS["audio_events"] == "measure.audio.events"
+    assert KIND_TO_TOOL["highlight_signals"] == "signals" and CAPABILITY_IDS["highlight_signals"] == "measure.media.highlight_signals"
+    assert TOOL_CAPABILITIES["events"] == ["ffprobe", "ffmpeg"] and TOOL_CAPABILITIES["signals"] == ["ffprobe", "ffmpeg", "filter:astats", "filter:scdet"]
+    assert PARAMETER_SCHEMAS["audio_events"]["hop"]["default"] == 0.1 and PARAMETER_SCHEMAS["highlight_signals"]["burst_min_cuts"]["type"] == "integer"
+    extras = skill_contract()["execution"]["optional_extras"]
+    assert extras["events"]["kinds"] == ["audio_events"] and extras["events"]["download_at_run_time"] is False
+    assert extras["vad"]["kinds"] == ["speech_regions"]          # the earlier extra is unchanged (additive contract)
+
+
+# ---- highlight_signals helpers (ADR-036)
+def test_speech_energy_peaks_over_the_median_active_level():
+    from media_analysis.analyzers.signals import energy_peaks
+    # 10 ms frames: 2 s at -30 dBFS, 1 s at -18 (+12 dB), 2 s at -30, 1 s of digital silence (inactive, not in the baseline)
+    levels = [-30.0] * 200 + [-18.0] * 100 + [-30.0] * 200 + [float("-inf")] * 100
+    d = energy_peaks(levels, window=0.5, peak_db=6.0, active_floor_db=-60.0)
+    assert d["baseline_dbfs"] == -30.0 and d["active_windows"] == 10 and d["window_count"] == 12
+    assert d["spans"] == [{"start": 2.0, "end": 3.0, "duration": 1.0, "score": 12.0, "mean_lift_db": 12.0, "peak_level_dbfs": -18.0, "peak_time": 2.25}]
+    assert energy_peaks([float("-inf")] * 50, 0.5, 6.0, -60.0)["spans"] == []
+
+
+def _syllables(rate_of, seconds):
+    """10 ms frame levels of a raised-cosine envelope whose rate (per second) is rate_of(t)."""
+    import math
+    out, phase = [], 0.0
+    for i in range(int(seconds * 100)):
+        t = i / 100
+        phase += rate_of(t) / 100
+        amp = 0.5 - 0.5 * math.cos(2 * math.pi * phase)
+        out.append(20 * math.log10(amp) - 20 if amp > 1e-6 else float("-inf"))
+    return out
+
+
+def test_syllable_nuclei_and_speaking_rate_change():
+    from media_analysis.analyzers.signals import nuclei, rate_changes
+    steady = _syllables(lambda t: 4.0, 6.0)
+    assert len(nuclei(steady, -60.0, 4.0)) == 24
+    levels = _syllables(lambda t: 8.0 if 7.0 <= t < 10.0 else 4.0, 14.0)
+    d = rate_changes(levels, window=3.0, hop=0.5, change=0.25, active_floor_db=-60.0, nucleus_db=4.0)
+    assert d["baseline_rate"] == 4.0 and d["span_count"] == 1
+    s = d["spans"][0]
+    assert s["direction"] == "faster" and abs(s["start"] - 7.0) <= 0.5 and abs(s["end"] - 10.0) <= 0.5 and s["score"] == 2.0
+    assert rate_changes([float("-inf")] * 500, 3.0, 0.5, 0.25, -60.0, 4.0)["baseline_rate"] is None
+
+
+def test_screen_change_bursts_cluster_cuts():
+    from media_analysis.analyzers.signals import cut_bursts
+    cuts = [1.0, 6.0, 6.4, 6.8, 7.2, 12.0, 20.0, 20.5]
+    assert cut_bursts(cuts, gap=1.5, min_cuts=3) == [{"start": 6.0, "end": 7.2, "duration": 1.2, "cut_count": 4, "score": 3.3333}]
+    assert cut_bursts(cuts, gap=1.5, min_cuts=2)[-1] == {"start": 20.0, "end": 20.5, "duration": 0.5, "cut_count": 2, "score": 4.0}
+    assert cut_bursts([], 1.5, 3) == []
+
+
+def test_highlights_take_an_audio_events_result_as_signals():
+    from media_analysis.highlights import parse_signals
+    data = {"status": "MEASURED", "applause": {"spans": [{"start": 11.0, "end": 16.2, "score": 0.8}]},
+            "laughter": {"spans": [{"start": 3.0, "end": 7.9, "score": 0.5}]}, "hop": 0.1}
+    expected = {"applause": [{"start": 11.0, "end": 16.2}], "laughter": [{"start": 3.0, "end": 7.9}]}
+    assert parse_signals(data) == expected
+    assert parse_signals({"kind": "audio_events", "data": data, "id": "obs_x"}) == expected
+    assert parse_signals({"applause": [{"start": 1, "end": 2}]}) == {"applause": [{"start": 1.0, "end": 2.0}]}
+    with pytest.raises(AnalysisError) as e:
+        parse_signals({"status": "UNKNOWN", "applause": None, "laughter": None})
+    assert e.value.code == "INVALID_INPUT"
+
+
+def test_energy_peak_time_stays_inside_a_short_last_window():
+    from media_analysis.analyzers.signals import energy_peaks
+    d = energy_peaks([-30.0] * 100 + [-10.0] * 10, window=0.5, peak_db=6.0, active_floor_db=-60.0)
+    s = d["spans"][0]
+    assert (s["start"], s["end"], s["peak_time"]) == (1.0, 1.1, 1.05)

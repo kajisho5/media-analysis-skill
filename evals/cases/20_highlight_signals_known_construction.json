@@ -1,0 +1,21 @@
+{
+  "id": "20_highlight_signals_known_construction",
+  "fixture": "signals",
+  "kind": "highlight_signals",
+  "derivation": "signals.mp4: six hard cuts 0.4 s apart at 6.0-8.0 s and no other cut (one burst, 6 cuts over 2.0 s = 3.0 cuts/s); a 500 Hz tone under a 4-per-second syllable envelope, 8 per second for 7-10 s (rate 2.0 x the median), amplitude x4 for 11-12.5 s (+12.0 dB over the median 0.5 s window, windows aligned to 11.0 and 12.5 s)",
+  "expect": [
+    {"path": "data.speech_energy_peaks.span_count", "value": 1},
+    {"path": "data.speech_energy_peaks.spans.0.start", "op": "approx", "value": 11.0, "tolerance": 0.05},
+    {"path": "data.speech_energy_peaks.spans.0.end", "op": "approx", "value": 12.5, "tolerance": 0.05},
+    {"path": "data.speech_energy_peaks.spans.0.score", "op": "approx", "value": 12.0, "tolerance": 0.5},
+    {"path": "data.speaking_rate_changes.span_count", "value": 1},
+    {"path": "data.speaking_rate_changes.spans.0.direction", "value": "faster"},
+    {"path": "data.speaking_rate_changes.spans.0.start", "op": "approx", "value": 7.0, "tolerance": 0.5},
+    {"path": "data.speaking_rate_changes.spans.0.end", "op": "approx", "value": 10.0, "tolerance": 0.5},
+    {"path": "data.speaking_rate_changes.spans.0.score", "op": "approx", "value": 2.0, "tolerance": 0.2},
+    {"path": "data.screen_change_bursts.cut_count", "value": 6},
+    {"path": "data.screen_change_bursts.spans.0.start", "op": "approx", "value": 6.0, "tolerance": 0.05},
+    {"path": "data.screen_change_bursts.spans.0.end", "op": "approx", "value": 8.0, "tolerance": 0.05},
+    {"path": "data.screen_change_bursts.spans.0.score", "op": "approx", "value": 3.0, "tolerance": 0.1}
+  ]
+}

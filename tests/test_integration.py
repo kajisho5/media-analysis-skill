@@ -621,7 +621,7 @@ def test_timeout_keeps_the_protocol(media, tmp_path):
 
 
 # ---- real media matrix: every kind on every fixture yields a contract-conformant ok or error result
-AUDIO_KINDS = {"audio_format", "silence", "loudness", "noise_floor", "speech_regions"}
+AUDIO_KINDS = {"audio_format", "silence", "loudness", "noise_floor", "speech_regions", "audio_events"}
 VIDEO_KINDS = {"video_format", "scene_detection"}
 
 
@@ -773,3 +773,98 @@ def test_speech_regions_offline_deterministic_and_channel(media, tmp_path, monke
     with pytest.raises(AnalysisError) as ei:
         run(e, media["stereo"], "speech_regions", channel=2)
     assert ei.value.code == "INVALID_INPUT"
+
+
+# ---- audio_events and highlight_signals (ADR-036)
+def _require_events():
+    from media_analysis.analyzers.events import events_status
+    st = events_status()
+    if not st["available"]:
+        pytest.fail("audio_events integration tests need the optional extra: " + st["detail"] + " (they are not skipped)")
+
+
+def test_audio_events_find_the_laugh_and_the_applause_within_half_a_second(media, tmp_path):
+    """Done-when of roadmap step 5: a fixture with applause and a laugh gives both spans within 0.5 s."""
+    _require_events()
+    from fixtures.generate import REACTIONS_SECONDS, reaction_labels
+    o = run(engine(tmp_path), media["reactions"], "audio_events")
+    d = o["data"]
+    assert o["source"] == f"media-analysis/events@{VERSION}" and d["status"] == "MEASURED"
+    assert d["engine"]["name"] == "YAMNet" and d["engine"]["licence"] == "Apache-2.0" and d["engine"]["device"] == "cpu"
+    assert abs(d["analysed_seconds"] - REACTIONS_SECONDS) < 0.05 and d["patch_count"] == int(REACTIONS_SECONDS / d["hop"]) + 1
+    for event, (start, end) in reaction_labels().items():
+        spans = d[event]["spans"]
+        assert len(spans) == 1, (event, spans)
+        s = spans[0]
+        assert abs(s["start"] - start) <= 0.5 and abs(s["end"] - end) <= 0.5, (event, s, (start, end))
+        assert d[event]["threshold"] <= s["score"] <= s["max_score"] <= 1.0
+
+
+def test_audio_events_nothing_on_speech_music_tones_or_noise(media, tmp_path):
+    _require_events()
+    e = engine(tmp_path)
+    for key in ("speech", "speech_music", "speech_noise", "music", "talk", "noisy", "silence"):
+        d = run(e, media[key], "audio_events")["data"]
+        assert d["status"] == "MEASURED" and d["applause"]["spans"] == [] and d["laughter"]["spans"] == [], (key, d["applause"], d["laughter"])
+
+
+def test_audio_events_offline_deterministic_and_channel(media, tmp_path, monkeypatch):
+    _require_events()
+    import socket
+
+    def no_network(*a, **k):
+        raise AssertionError("audio_events opened a network socket")
+
+    monkeypatch.setattr(socket, "socket", no_network)
+    monkeypatch.setattr(socket, "create_connection", no_network)
+    e = engine(tmp_path)
+    first = run(e, media["reactions"], "audio_events", hop=0.24)["data"]
+    second = run(e, media["reactions"], "audio_events", hop=0.24)["data"]
+    assert first["applause"] == second["applause"] and first["laughter"] == second["laughter"] and first["hop"] == 0.24
+    tone = run(e, media["stereo"], "audio_events", channel=1)["data"]
+    assert tone["channel"] == 1 and tone["applause"]["spans"] == [] and tone["laughter"]["spans"] == []
+    with pytest.raises(AnalysisError) as ei:
+        run(e, media["stereo"], "audio_events", channel=2)
+    assert ei.value.code == "INVALID_INPUT"
+
+
+def test_highlight_signals_on_known_construction(media, tmp_path):
+    o = run(engine(tmp_path), media["signals"], "highlight_signals")
+    d = o["data"]
+    assert o["source"] == f"media-analysis/signals@{VERSION}"
+    peaks = d["speech_energy_peaks"]["spans"]
+    assert len(peaks) == 1 and abs(peaks[0]["start"] - 11.0) <= 0.05 and abs(peaks[0]["end"] - 12.5) <= 0.05
+    assert abs(peaks[0]["score"] - 12.0) < 0.5                                       # amplitude x4
+    rate = d["speaking_rate_changes"]
+    assert abs(rate["baseline_rate"] - 4.0) < 0.2 and rate["span_count"] == 1
+    r = rate["spans"][0]
+    assert r["direction"] == "faster" and abs(r["start"] - 7.0) <= 0.5 and abs(r["end"] - 10.0) <= 0.5 and abs(r["score"] - 2.0) < 0.2
+    bursts = d["screen_change_bursts"]
+    assert bursts["cut_count"] == 6 and bursts["spans"] == [{"start": 6.0, "end": 8.0, "duration": 2.0, "cut_count": 6, "score": 3.0}]
+
+
+def test_highlight_signals_missing_streams_are_not_performed(media, tmp_path):
+    e = engine(tmp_path)
+    audio_only = run(e, media["talk"], "highlight_signals")["data"]
+    assert audio_only["screen_change_bursts"] == {"status": "not_performed", "reason": "no such video stream"}
+    peak = audio_only["speech_energy_peaks"]["spans"]
+    assert peak and abs(peak[0]["start"] - 90.0) <= 0.5                               # talk.wav is +12 dB from 90 s
+    video_only = run(e, media["scenes"], "highlight_signals")["data"]
+    assert video_only["speech_energy_peaks"]["status"] == "not_performed" and video_only["speaking_rate_changes"]["status"] == "not_performed"
+    assert video_only["screen_change_bursts"]["cut_count"] == 2 and video_only["screen_change_bursts"]["spans"] == []
+
+
+def test_highlights_cli_takes_the_audio_events_result(media, tmp_path):
+    """The audio_events observation is passed to `highlights --signals` as it is (step 9 consumes step 5)."""
+    _require_events()
+    obs = run(engine(tmp_path), media["reactions"], "audio_events")
+    sig = tmp_path / "events.json"
+    sig.write_text(json.dumps(obs), encoding="utf-8")
+    tr = tmp_path / "t.json"
+    tr.write_text(json.dumps({"segments": [{"start": 0.0, "end": 9.5, "text": "We start here. That was funny."},
+                                           {"start": 10.0, "end": 19.5, "text": "Thank you all. Goodbye now."}]}), encoding="utf-8")
+    r = cli("highlights", str(media["reactions"]), "--transcript", str(tr), "--signals", str(sig), "--min-length", "5", "--json", cwd=tmp_path)
+    assert r.returncode == 0, (r.stdout[-400:], r.stderr[-400:])
+    doc = json.loads(r.stdout)
+    assert doc["signals_used"]["applause"] is True and doc["signals_used"]["laughter"] is True
+    assert not [n for n in doc["not_measured"] if n["item"] in ("applause", "laughter")]

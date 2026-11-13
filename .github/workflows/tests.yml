@@ -38,8 +38,9 @@ jobs:
         run: choco install ffmpeg -y --no-progress
       - run: ffprobe -version
         shell: bash
-      # the optional extra vad (onnxruntime, numpy) so speech_regions is measured, not UNKNOWN (ADR-035)
-      - run: python -m pip install -e ".[vad]" pytest
+      # the optional extras vad and events (onnxruntime, numpy) so speech_regions and audio_events are measured, not
+      # UNKNOWN (ADR-035, ADR-036)
+      - run: python -m pip install -e ".[vad,events]" pytest
       - run: python -m pytest -q
       - run: python evals/run.py
       - run: python evals/contract_evals.py

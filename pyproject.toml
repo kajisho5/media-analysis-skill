@@ -16,6 +16,8 @@ dependencies = []
 [project.optional-dependencies]
 # speech_regions (ADR-035): CPU inference of the voice-activity model shipped in media_analysis/models
 vad = ["onnxruntime>=1.16", "numpy>=1.21"]
+# audio_events (ADR-036): CPU inference of the audio-event classifier shipped in media_analysis/models
+events = ["onnxruntime>=1.16", "numpy>=1.21"]
 
 [project.scripts]
 media-analysis = "media_analysis.cli:main"

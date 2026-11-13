@@ -1,0 +1,6 @@
+laugh.opus and applause.opus are excerpts of field recordings released under the Creative Commons CC0 1.0
+Universal public-domain dedication (https://creativecommons.org/publicdomain/zero/1.0/). They were cut (laugh: 5.0 s
+of a group of women laughing; applause: 5.5 s of a crowd applauding), downmixed to mono, resampled to 16 kHz,
+levelled to -22 dBFS RMS, given 20 ms fades and encoded as Opus 48 kbit/s. They are the only recorded (not
+synthesised) media in this repository: a synthesised laugh or round of applause is not recognised by the audio-event
+classifier (ADR-036), so a real one is needed to test it.
