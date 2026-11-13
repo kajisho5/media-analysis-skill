@@ -2,7 +2,7 @@
 
 ```text
 pip install -e ".[vad,events]" pytest
-python -m pytest -q               # 164 tests: unit + contract + integration + evals + release labels
+python -m pytest -q               # 165 tests: unit + contract + integration + evals + release labels
 python evals/run.py               # 20 measurement eval cases with expected values and tolerances
 python evals/contract_evals.py    # 17 contract eval cases
 ```
@@ -48,7 +48,7 @@ Nothing binary is committed; fixtures are generated with ffmpeg into a temporary
 contract ↔ registry agreement (no undeclared or unimplemented tools) · AnalysisRequest validation · command / argv
 rejection · kind validation · parameter validation (unknown, type, range, NaN) · probe / stream / video (CFR, VFR,
 unknown) / audio parsers · silence parser + classification · ebur128 parser (incl. `-inf`) · noise window parser, nearest-rank percentile and summary (`-inf` windows → null) · A/V start offset from a probe · integrity status
-(PASS / WARN / FAIL) · scdet parser · edit_style shot / distribution helpers, ASS event positions, subtitle presence over every stream, profile diff · library description / measured tags, external tags parsing, search conditions · highlight sentence splitting (segments, words, speaker change, CJK punctuation), scoring rules, signal parsing · burned-in text lines / regions / band / summary on synthetic frames · streamed raw-frame reading (records, partial tail, timeout) · speech_regions segmentation (hysteresis, min speech / silence, padding and merging), summary (share, longest pause), `UNKNOWN` without the extra (no executable, not cached) and contract entries · audio_events spans (hysteresis, merge gap, minimum duration, clamping), any-of-the-classes score, mel matrix, `UNKNOWN` without the extra · highlight_signals energy peaks, syllable nuclei and rate change, cut bursts · `highlights` taking an audio_events result · video stream selection skips cover art (`0:V:n`) in edit_style, burned-in sampling and scene_detection · malformed result · wrong asset / kind / analysis id / source · deterministic
+(PASS / WARN / FAIL) · scdet parser · edit_style shot / distribution helpers, ASS event positions, subtitle presence over every stream, profile diff · library description / measured tags, external tags parsing, search conditions · highlight sentence splitting (segments, words, speaker change, CJK punctuation), scoring rules, signal parsing · burned-in text lines / regions / band / summary on synthetic frames · streamed raw-frame reading (records, partial tail, timeout) · speech_regions segmentation (hysteresis, min speech / silence, padding and merging), summary (share, longest pause), `UNKNOWN` without the extra (no executable, not cached) and contract entries · audio_events spans (hysteresis, merge gap, minimum duration, clamping), any-of-the-classes score, mel matrix, `UNKNOWN` without the extra · highlight_signals energy peaks (peak time inside a short last window), syllable nuclei and rate change, cut bursts · `highlights` taking an audio_events result · video stream selection skips cover art (`0:V:n`) in edit_style, burned-in sampling and scene_detection · malformed result · wrong asset / kind / analysis id / source · deterministic
 identity (parameter order, asset / version / parameter changes) · cache hit / miss / relabel / disabled · cache
 invalidation by asset, algorithm version, parameters · a package (patch) version bump keeps the cache, with the
 measuring version still in `source` · an algorithm version bump invalidates only that analyzer's entries · every
@@ -60,7 +60,7 @@ secret leakage (env value, secret-looking key, child environment) · command / a
 ## Contract tests (`tests/test_contract.py`)
 
 schema validator · contract JSON self-consistency (sections, schema versions, error / exit tables, budget / cache
-vocab) · tools and kinds derived from the registry (`tool_spec(analyzer)` equality, coverage of all 13 kinds,
+vocab) · tools and kinds derived from the registry (`tool_spec(analyzer)` equality, coverage of all 15 kinds,
 capability names) · consumer rules from `tests/contract/agent_skill_package_contract.json` (video-production-agent
 SkillPackage / ToolSpec / Observation / capability-name rules) · request schema ↔ `AnalysisRequest` agreement (incl.
 `strategy` / `budget` / `cache_policy` rejection) · response / result / observation schema roundtrip through

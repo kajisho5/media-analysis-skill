@@ -131,7 +131,8 @@ class LogMel:
 
 
 class YamnetScores:
-    """Patch scores from the shipped model: push log-mel frames, collect [patches, 521] scores."""
+    """Event scores from the shipped model: push log-mel frames, collect one score per patch and event. Each batch's
+    521 class scores are reduced to the events' scores at once, so memory per patch is one float per event."""
 
     def __init__(self, path: str, hop_frames: int):
         import numpy as np
@@ -147,7 +148,7 @@ class YamnetScores:
         self.hop = hop_frames
         self.frames = np.zeros((0, MEL_BANDS), dtype=np.float32)
         self.pending: List[Any] = []
-        self.scores: List[Any] = []
+        self.scores: Dict[str, List[float]] = {e: [] for e in EVENTS}
 
     def push(self, frames) -> None:
         np = self.np
@@ -163,7 +164,8 @@ class YamnetScores:
         n = len(self.pending)
         batch = np.stack(self.pending + [np.zeros((PATCH_FRAMES, MEL_BANDS), dtype=np.float32)] * (BATCH - n))
         out = self.session.run(None, {"patches": batch})[0]
-        self.scores.extend(out[:n])
+        for event, cls in EVENT_CLASSES.items():
+            self.scores[event].extend(event_scores(np, out[:n], [i for i, _ in cls]))
         self.pending = []
 
     def finish(self):
@@ -292,11 +294,10 @@ class EventsAnalyzer(Analyzer):
         model.push(feats.push(pad))
         scores = model.finish()
         # patches whose centre lies beyond the audio (they only exist because of the end padding) are not reported
-        n = min(len(scores), int(analysed / hop + 1e-9) + 1) if decoded[0] else 0
-        scores = scores[:n]
+        n = min(len(scores[EVENTS[0]]), int(analysed / hop + 1e-9) + 1) if decoded[0] else 0
         data: Dict[str, Any] = {"status": "MEASURED", **common, "analysed_seconds": round(analysed, 4), "patch_count": n}
-        for event, cls in EVENT_CLASSES.items():
-            values = event_scores(np, scores, [i for i, _ in cls])
+        for event in EVENTS:
+            values = scores[event][:n]
             data[event] = summarise(event, values, hop, parameters[f"{event}_threshold"], parameters["min_duration"],
                                     parameters["merge_gap"], analysed)
         data["engine"] = {"name": "YAMNet", "model": MODEL_FILE, "model_sha256": _sha256(model_path()), "runtime": model.runtime,

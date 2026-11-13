@@ -19,6 +19,7 @@ what is a highlight (the caller, e.g. `media-analysis highlights` or the agent, 
 A section whose stream does not exist is `not_performed` with the reason; the other sections are still measured."""
 from __future__ import annotations
 
+import bisect
 import math
 import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -83,7 +84,7 @@ def energy_peaks(levels: Sequence[float], window: float, peak_db: float, active_
             spans.append({"start": round(i * win, 4), "end": round(min(total, (j + 1) * win), 4),
                           "duration": round(min(total, (j + 1) * win) - i * win, 4), "score": round(max(lifts), 3),
                           "mean_lift_db": round(sum(lifts) / len(lifts), 3), "peak_level_dbfs": round(wl[top], 3),
-                          "peak_time": round(top * win + win / 2, 4)})
+                          "peak_time": round((top * win + min(total, (top + 1) * win)) / 2, 4)})
             i = j + 1
         else:
             i += 1
@@ -136,7 +137,7 @@ def rate_changes(levels: Sequence[float], window: float, hop: float, change: flo
             a, b = c - window / 2, c + window / 2
             fa, fb = int(round(a / FRAME)), int(round(b / FRAME))
             act = sum(1 for v in levels[fa:fb] if v >= active_floor_db) / max(1, fb - fa)
-            n = sum(1 for t in times if a <= t < b)
+            n = bisect.bisect_left(times, b) - bisect.bisect_left(times, a)      # times are sorted
             rows.append((round(c, 4), round(n / window, 4) if act >= 0.5 else None))
             k += 1
     rates = [r for _, r in rows if r is not None]

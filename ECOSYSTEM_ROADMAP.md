@@ -5,7 +5,7 @@ Written from a read-only audit of this repository on 2026-10-30. Each step below
 
 ## Where it stands
 
-Version single-sourced from `pyproject.toml` (#17): `contract --json` → `version` equals the newest tag (0.1.16 at `v0.1.16`, checked 2026-11-12). Cache keyed by per-analyzer algorithm version, so releases no longer empty it (ADR-028). 15 measurement kinds (step 3 added `noise_floor`, step 7 `edit_style`, step 4 `speech_regions`, step 5 `audio_events` and `highlight_signals`). 164 tests collected, CI on 3 OSes. STATE.md current (#18).
+Version single-sourced from `pyproject.toml` (#17): `contract --json` → `version` equals the newest tag (0.1.16 at `v0.1.16`, checked 2026-11-12). Cache keyed by per-analyzer algorithm version, so releases no longer empty it (ADR-028). 15 measurement kinds (step 3 added `noise_floor`, step 7 `edit_style`, step 4 `speech_regions`, step 5 `audio_events` and `highlight_signals`). 165 tests collected, CI on 3 OSes. STATE.md current (#18).
 
 ## What this repository owns
 

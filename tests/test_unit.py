@@ -1075,3 +1075,10 @@ def test_highlights_take_an_audio_events_result_as_signals():
     with pytest.raises(AnalysisError) as e:
         parse_signals({"status": "UNKNOWN", "applause": None, "laughter": None})
     assert e.value.code == "INVALID_INPUT"
+
+
+def test_energy_peak_time_stays_inside_a_short_last_window():
+    from media_analysis.analyzers.signals import energy_peaks
+    d = energy_peaks([-30.0] * 100 + [-10.0] * 10, window=0.5, peak_db=6.0, active_floor_db=-60.0)
+    s = d["spans"][0]
+    assert (s["start"], s["end"], s["peak_time"]) == (1.0, 1.1, 1.05)

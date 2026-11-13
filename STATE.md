@@ -27,9 +27,9 @@ against the code, a command run or the GitHub API on that date; anything that co
   saves an `edit_style` profile, `style diff <ref> <cand>` compares two; ADR-030), `library` (`library index <folder>
   --index <file>` / `library search`: a B-roll index with measured metadata and tags, incremental re-scan; ADR-031),
   `highlights` (candidates of a long recording on sentence boundaries, with reasons; applause / laughter spans come
-  from the caller; ADR-032).
+  from the caller, for example this Skill's `audio_events` observation; ADR-032, ADR-036).
 - Contract `media-analysis/contract@1` (`schema_versions`: contract / request / response / observation all `1`).
-  12 tools, 13 analysis kinds, derived from the analyzer registry:
+  14 tools, 15 analysis kinds, derived from the analyzer registry:
 
   | Tool | Kinds | Capability id (`provides`) |
   |---|---|---|
@@ -102,8 +102,8 @@ against the code, a command run or the GitHub API on that date; anything that co
 - No other caller found in the sibling checkouts; whether anything outside them calls it is **unverified**.
 
 ## Tests and CI
-- `python -m pytest -q`: **164 passed** locally on 2026-11-13 (Python 3.11, FFmpeg 6.1.1, onnxruntime 1.31.1, Linux) —
-  collected per file: `test_contract.py` 43, `test_integration.py` 52, `test_unit.py` 58, `test_evals.py` 2,
+- `python -m pytest -q`: **165 passed** locally on 2026-11-13 (Python 3.11, FFmpeg 6.1.1, onnxruntime 1.31.1, Linux) —
+  collected per file: `test_contract.py` 43, `test_integration.py` 52, `test_unit.py` 59, `test_evals.py` 2,
   `test_release_labels.py` 9.
 - `python evals/run.py` 20/20 measurement evals; `python evals/contract_evals.py` 17/17 contract evals;
   `python -m pyflakes src tests evals` clean.
