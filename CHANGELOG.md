@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.18 - 2026-11-13
+
+- Highlight signals: audio_events and highlight_signals (roadmap step 5) (#32) (1dc10ab)
+
 ## v0.1.17 - 2026-11-12
 
 - docs(roadmap): add the ownership decisions of 2026-11-12 (#31) (50f12db)
