@@ -50,6 +50,7 @@ The agent pins this contract at 0.1.16 (first pinned at 0.1.7 in video-productio
   - Done when: on synthetic fixtures with and without burned-in subtitles, coverage, position and text height match the known values within tolerance, and the diff shows the difference
 - [ ] **11. (agent side) speech regions planned for long inputs** — the agent adds SkillSpec `speech_region_analysis` and plans `speech_regions` → `transcribe(speech_regions=...)` ([Velisa ownership decisions 2026-11-12](https://github.com/kajisho5/Velisa/blob/main/docs/ecosystem/DECISION_LOG.md))
   - Done when: tracked in video-production-agent (step 33)
+  - Status 2026-11-13: half done. The agent has SkillSpec `speech_region_analysis` (video-production-agent [#157](https://github.com/kajisho5/video-production-agent/pull/157)): `--set speech_regions.detect=true` runs `media-analysis/vad` and records analysis kind `speech_regions`, opt-in and measurement only. **Not met:** the agent does not plan `speech_regions` → `transcribe(speech_regions=...)` for long inputs; the regions are not handed to transcription (the agent records that this needs `chunk_seconds`, a new option there). Left unchecked until the agent plans it
 
 ## Boundaries
 
