@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.19 - 2026-11-13
+
+- docs(roadmap): status of step 11, speech regions in the agent (#33) (32fcb76)
+
 ## v0.1.18 - 2026-11-13
 
 - Highlight signals: audio_events and highlight_signals (roadmap step 5) (#32) (1dc10ab)
