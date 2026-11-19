@@ -1,0 +1,2077 @@
+{
+  "schema": "media-analysis/contract@1",
+  "skill_id": "media-analysis",
+  "name": "media-analysis",
+  "package": "media-analysis-skill",
+  "version": "0.1.19",
+  "description": "Deterministic media observation / analysis. Measures facts about media files; never interprets, decides or edits.",
+  "role": "observation / analysis",
+  "repository": "kajisho5/media-analysis-skill",
+  "capabilities": [
+    "ffprobe"
+  ],
+  "capability_names": [
+    "ffmpeg",
+    "ffprobe",
+    "filter:astats",
+    "filter:ebur128",
+    "filter:edgedetect",
+    "filter:scdet",
+    "filter:silencedetect"
+  ],
+  "tools": [
+    {
+      "tool_id": "media-analysis/audio",
+      "skill_id": "media-analysis",
+      "version": "0.1.19",
+      "algorithm_version": "1",
+      "description": "Audio format of one audio stream (sample rate, channels, layout, codec, sample format, bitrate)",
+      "required_capabilities": [
+        "ffprobe"
+      ],
+      "inputs": [
+        "input"
+      ],
+      "input_type": "media file path (one file per request)",
+      "produces_output": false,
+      "deterministic": true,
+      "writes_media": false,
+      "result_keys": [
+        "observation"
+      ],
+      "kinds": [
+        "audio_format"
+      ],
+      "output_observation_kinds": [
+        "audio_format"
+      ],
+      "parameters": {
+        "audio_format": {
+          "stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          }
+        }
+      },
+      "supports": {
+        "timeout": true,
+        "cache": true,
+        "dry_run": true
+      },
+      "provenance": "OBSERVED"
+    },
+    {
+      "tool_id": "media-analysis/events",
+      "skill_id": "media-analysis",
+      "version": "0.1.19",
+      "algorithm_version": "1",
+      "description": "Applause and laughter spans of one audio stream from an audio-event classifier (optional extra 'events'; UNKNOWN without it): time ranges with a score",
+      "required_capabilities": [
+        "ffprobe",
+        "ffmpeg"
+      ],
+      "inputs": [
+        "input"
+      ],
+      "input_type": "media file path (one file per request)",
+      "produces_output": false,
+      "deterministic": true,
+      "writes_media": false,
+      "result_keys": [
+        "observation"
+      ],
+      "kinds": [
+        "audio_events"
+      ],
+      "output_observation_kinds": [
+        "audio_events"
+      ],
+      "parameters": {
+        "audio_events": {
+          "stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "channel": {
+            "type": "integer",
+            "default": -1,
+            "min": -1,
+            "max": 63
+          },
+          "hop": {
+            "type": "number",
+            "default": 0.1,
+            "min": 0.05,
+            "max": 0.96
+          },
+          "applause_threshold": {
+            "type": "number",
+            "default": 0.3,
+            "min": 0.05,
+            "max": 0.95
+          },
+          "laughter_threshold": {
+            "type": "number",
+            "default": 0.3,
+            "min": 0.05,
+            "max": 0.95
+          },
+          "min_duration": {
+            "type": "number",
+            "default": 0.5,
+            "min": 0.0,
+            "max": 60.0
+          },
+          "merge_gap": {
+            "type": "number",
+            "default": 1.0,
+            "min": 0.0,
+            "max": 60.0
+          }
+        }
+      },
+      "supports": {
+        "timeout": true,
+        "cache": true,
+        "dry_run": true
+      },
+      "provenance": "OBSERVED"
+    },
+    {
+      "tool_id": "media-analysis/integrity",
+      "skill_id": "media-analysis",
+      "version": "0.1.19",
+      "algorithm_version": "1",
+      "description": "Full decode with error counting, per-stream frame counts and timestamp monotonicity; PASS / WARN / FAIL",
+      "required_capabilities": [
+        "ffprobe",
+        "ffmpeg"
+      ],
+      "inputs": [
+        "input"
+      ],
+      "input_type": "media file path (one file per request)",
+      "produces_output": false,
+      "deterministic": true,
+      "writes_media": false,
+      "result_keys": [
+        "observation"
+      ],
+      "kinds": [
+        "integrity"
+      ],
+      "output_observation_kinds": [
+        "integrity"
+      ],
+      "parameters": {
+        "integrity": {
+          "max_error_lines": {
+            "type": "integer",
+            "default": 200,
+            "min": 1,
+            "max": 100000
+          }
+        }
+      },
+      "supports": {
+        "timeout": true,
+        "cache": true,
+        "dry_run": true
+      },
+      "provenance": "OBSERVED"
+    },
+    {
+      "tool_id": "media-analysis/loudness",
+      "skill_id": "media-analysis",
+      "version": "0.1.19",
+      "algorithm_version": "1",
+      "description": "EBU R128 integrated loudness, loudness range and true peak of one audio stream",
+      "required_capabilities": [
+        "ffprobe",
+        "ffmpeg",
+        "filter:ebur128"
+      ],
+      "inputs": [
+        "input"
+      ],
+      "input_type": "media file path (one file per request)",
+      "produces_output": false,
+      "deterministic": true,
+      "writes_media": false,
+      "result_keys": [
+        "observation"
+      ],
+      "kinds": [
+        "loudness"
+      ],
+      "output_observation_kinds": [
+        "loudness"
+      ],
+      "parameters": {
+        "loudness": {
+          "stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          }
+        }
+      },
+      "supports": {
+        "timeout": true,
+        "cache": true,
+        "dry_run": true
+      },
+      "provenance": "OBSERVED"
+    },
+    {
+      "tool_id": "media-analysis/noise",
+      "skill_id": "media-analysis",
+      "version": "0.1.19",
+      "algorithm_version": "1",
+      "description": "Noise floor, signal level and no-reference SNR estimate of one audio stream (or one channel) from short-window RMS",
+      "required_capabilities": [
+        "ffprobe",
+        "ffmpeg",
+        "filter:astats"
+      ],
+      "inputs": [
+        "input"
+      ],
+      "input_type": "media file path (one file per request)",
+      "produces_output": false,
+      "deterministic": true,
+      "writes_media": false,
+      "result_keys": [
+        "observation"
+      ],
+      "kinds": [
+        "noise_floor"
+      ],
+      "output_observation_kinds": [
+        "noise_floor"
+      ],
+      "parameters": {
+        "noise_floor": {
+          "stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "channel": {
+            "type": "integer",
+            "default": -1,
+            "min": -1,
+            "max": 63
+          },
+          "window": {
+            "type": "number",
+            "default": 0.05,
+            "min": 0.01,
+            "max": 1.0
+          },
+          "noise_percentile": {
+            "type": "number",
+            "default": 10.0,
+            "min": 0.0,
+            "max": 50.0
+          },
+          "signal_percentile": {
+            "type": "number",
+            "default": 95.0,
+            "min": 50.0,
+            "max": 100.0
+          }
+        }
+      },
+      "supports": {
+        "timeout": true,
+        "cache": true,
+        "dry_run": true
+      },
+      "provenance": "OBSERVED"
+    },
+    {
+      "tool_id": "media-analysis/probe",
+      "skill_id": "media-analysis",
+      "version": "0.1.19",
+      "algorithm_version": "1",
+      "description": "Container and primary stream facts (format, duration, size, bitrate, video/audio summary)",
+      "required_capabilities": [
+        "ffprobe"
+      ],
+      "inputs": [
+        "input"
+      ],
+      "input_type": "media file path (one file per request)",
+      "produces_output": false,
+      "deterministic": true,
+      "writes_media": false,
+      "result_keys": [
+        "observation"
+      ],
+      "kinds": [
+        "media_probe"
+      ],
+      "output_observation_kinds": [
+        "media_probe"
+      ],
+      "parameters": {
+        "media_probe": {}
+      },
+      "supports": {
+        "timeout": true,
+        "cache": true,
+        "dry_run": true
+      },
+      "provenance": "OBSERVED"
+    },
+    {
+      "tool_id": "media-analysis/scenes",
+      "skill_id": "media-analysis",
+      "version": "0.1.19",
+      "algorithm_version": "2",
+      "description": "Deterministic visual scene-cut detection (scdet score), not semantic scene understanding",
+      "required_capabilities": [
+        "ffprobe",
+        "ffmpeg",
+        "filter:scdet"
+      ],
+      "inputs": [
+        "input"
+      ],
+      "input_type": "media file path (one file per request)",
+      "produces_output": false,
+      "deterministic": true,
+      "writes_media": false,
+      "result_keys": [
+        "observation"
+      ],
+      "kinds": [
+        "scene_detection"
+      ],
+      "output_observation_kinds": [
+        "scene_detection"
+      ],
+      "parameters": {
+        "scene_detection": {
+          "stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "threshold": {
+            "type": "number",
+            "default": 10.0,
+            "min": 0.0,
+            "max": 100.0
+          },
+          "min_scene_duration": {
+            "type": "number",
+            "default": 0.5,
+            "min": 0.0,
+            "max": 3600.0
+          }
+        }
+      },
+      "supports": {
+        "timeout": true,
+        "cache": true,
+        "dry_run": true
+      },
+      "provenance": "OBSERVED"
+    },
+    {
+      "tool_id": "media-analysis/signals",
+      "skill_id": "media-analysis",
+      "version": "0.1.19",
+      "algorithm_version": "1",
+      "description": "Highlight signals measured, not judged: speech-energy peaks, speaking-rate changes and screen-change bursts, each as time ranges with a score",
+      "required_capabilities": [
+        "ffprobe",
+        "ffmpeg",
+        "filter:astats",
+        "filter:scdet"
+      ],
+      "inputs": [
+        "input"
+      ],
+      "input_type": "media file path (one file per request)",
+      "produces_output": false,
+      "deterministic": true,
+      "writes_media": false,
+      "result_keys": [
+        "observation"
+      ],
+      "kinds": [
+        "highlight_signals"
+      ],
+      "output_observation_kinds": [
+        "highlight_signals"
+      ],
+      "parameters": {
+        "highlight_signals": {
+          "audio_stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "video_stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "energy_window": {
+            "type": "number",
+            "default": 0.5,
+            "min": 0.05,
+            "max": 10.0
+          },
+          "peak_db": {
+            "type": "number",
+            "default": 6.0,
+            "min": 0.5,
+            "max": 40.0
+          },
+          "active_floor_db": {
+            "type": "number",
+            "default": -60.0,
+            "min": -120.0,
+            "max": 0.0
+          },
+          "rate_window": {
+            "type": "number",
+            "default": 3.0,
+            "min": 1.0,
+            "max": 30.0
+          },
+          "rate_hop": {
+            "type": "number",
+            "default": 0.5,
+            "min": 0.1,
+            "max": 10.0
+          },
+          "rate_change": {
+            "type": "number",
+            "default": 0.25,
+            "min": 0.05,
+            "max": 5.0
+          },
+          "nucleus_db": {
+            "type": "number",
+            "default": 4.0,
+            "min": 0.5,
+            "max": 30.0
+          },
+          "scene_threshold": {
+            "type": "number",
+            "default": 10.0,
+            "min": 0.0,
+            "max": 100.0
+          },
+          "burst_gap": {
+            "type": "number",
+            "default": 1.5,
+            "min": 0.04,
+            "max": 60.0
+          },
+          "burst_min_cuts": {
+            "type": "integer",
+            "default": 3,
+            "min": 2,
+            "max": 1000
+          }
+        }
+      },
+      "supports": {
+        "timeout": true,
+        "cache": true,
+        "dry_run": true
+      },
+      "provenance": "OBSERVED"
+    },
+    {
+      "tool_id": "media-analysis/silence",
+      "skill_id": "media-analysis",
+      "version": "0.1.19",
+      "algorithm_version": "1",
+      "description": "Silence segments of one audio stream with leading / internal / trailing classification",
+      "required_capabilities": [
+        "ffprobe",
+        "ffmpeg",
+        "filter:silencedetect"
+      ],
+      "inputs": [
+        "input"
+      ],
+      "input_type": "media file path (one file per request)",
+      "produces_output": false,
+      "deterministic": true,
+      "writes_media": false,
+      "result_keys": [
+        "observation"
+      ],
+      "kinds": [
+        "silence"
+      ],
+      "output_observation_kinds": [
+        "silence"
+      ],
+      "parameters": {
+        "silence": {
+          "stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "threshold_db": {
+            "type": "number",
+            "default": -40.0,
+            "min": -120.0,
+            "max": 0.0
+          },
+          "min_duration": {
+            "type": "number",
+            "default": 0.5,
+            "min": 0.01,
+            "max": 3600.0
+          },
+          "edge_tolerance": {
+            "type": "number",
+            "default": 0.1,
+            "min": 0.0,
+            "max": 10.0
+          }
+        }
+      },
+      "supports": {
+        "timeout": true,
+        "cache": true,
+        "dry_run": true
+      },
+      "provenance": "OBSERVED"
+    },
+    {
+      "tool_id": "media-analysis/streams",
+      "skill_id": "media-analysis",
+      "version": "0.1.19",
+      "algorithm_version": "1",
+      "description": "Every stream with index, type, codec, language, disposition, dimensions, rate, channels",
+      "required_capabilities": [
+        "ffprobe"
+      ],
+      "inputs": [
+        "input"
+      ],
+      "input_type": "media file path (one file per request)",
+      "produces_output": false,
+      "deterministic": true,
+      "writes_media": false,
+      "result_keys": [
+        "observation"
+      ],
+      "kinds": [
+        "stream_layout"
+      ],
+      "output_observation_kinds": [
+        "stream_layout"
+      ],
+      "parameters": {
+        "stream_layout": {}
+      },
+      "supports": {
+        "timeout": true,
+        "cache": true,
+        "dry_run": true
+      },
+      "provenance": "OBSERVED"
+    },
+    {
+      "tool_id": "media-analysis/style",
+      "skill_id": "media-analysis",
+      "version": "0.1.19",
+      "algorithm_version": "2",
+      "description": "Editing-style profile: cut rate and shot-length distribution, soft and burned-in subtitle frequency / coverage / position, loudness and silence share",
+      "required_capabilities": [
+        "ffprobe",
+        "ffmpeg",
+        "filter:scdet",
+        "filter:ebur128",
+        "filter:silencedetect",
+        "filter:edgedetect"
+      ],
+      "inputs": [
+        "input"
+      ],
+      "input_type": "media file path (one file per request)",
+      "produces_output": false,
+      "deterministic": true,
+      "writes_media": false,
+      "result_keys": [
+        "observation"
+      ],
+      "kinds": [
+        "edit_style"
+      ],
+      "output_observation_kinds": [
+        "edit_style"
+      ],
+      "parameters": {
+        "edit_style": {
+          "video_stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "audio_stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "threshold": {
+            "type": "number",
+            "default": 10.0,
+            "min": 0.0,
+            "max": 100.0
+          },
+          "min_shot_duration": {
+            "type": "number",
+            "default": 0.25,
+            "min": 0.0,
+            "max": 3600.0
+          },
+          "silence_threshold_db": {
+            "type": "number",
+            "default": -50.0,
+            "min": -120.0,
+            "max": 0.0
+          },
+          "silence_min_duration": {
+            "type": "number",
+            "default": 0.5,
+            "min": 0.01,
+            "max": 3600.0
+          },
+          "burned_in_interval": {
+            "type": "number",
+            "default": 1.0,
+            "min": 0.0,
+            "max": 60.0
+          }
+        }
+      },
+      "supports": {
+        "timeout": true,
+        "cache": true,
+        "dry_run": true
+      },
+      "provenance": "OBSERVED"
+    },
+    {
+      "tool_id": "media-analysis/timing",
+      "skill_id": "media-analysis",
+      "version": "0.1.19",
+      "algorithm_version": "2",
+      "description": "Duration and timing facts: start times, per-stream durations, A/V duration mismatch and start offset, timestamp discontinuities",
+      "required_capabilities": [
+        "ffprobe"
+      ],
+      "inputs": [
+        "input"
+      ],
+      "input_type": "media file path (one file per request)",
+      "produces_output": false,
+      "deterministic": true,
+      "writes_media": false,
+      "result_keys": [
+        "observation"
+      ],
+      "kinds": [
+        "duration",
+        "timing"
+      ],
+      "output_observation_kinds": [
+        "duration",
+        "timing"
+      ],
+      "parameters": {
+        "duration": {},
+        "timing": {
+          "gap_factor": {
+            "type": "number",
+            "default": 2.5,
+            "min": 1.1,
+            "max": 100.0
+          },
+          "av_mismatch_tolerance": {
+            "type": "number",
+            "default": 0.1,
+            "min": 0.0,
+            "max": 60.0
+          },
+          "av_start_offset_tolerance": {
+            "type": "number",
+            "default": 0.045,
+            "min": 0.0,
+            "max": 60.0
+          }
+        }
+      },
+      "supports": {
+        "timeout": true,
+        "cache": true,
+        "dry_run": true
+      },
+      "provenance": "OBSERVED"
+    },
+    {
+      "tool_id": "media-analysis/vad",
+      "skill_id": "media-analysis",
+      "version": "0.1.19",
+      "algorithm_version": "1",
+      "description": "Speech regions of one audio stream from a voice-activity model (optional extra 'vad'; UNKNOWN without it): time ranges with probability, speech share, longest pause",
+      "required_capabilities": [
+        "ffprobe",
+        "ffmpeg"
+      ],
+      "inputs": [
+        "input"
+      ],
+      "input_type": "media file path (one file per request)",
+      "produces_output": false,
+      "deterministic": true,
+      "writes_media": false,
+      "result_keys": [
+        "observation"
+      ],
+      "kinds": [
+        "speech_regions"
+      ],
+      "output_observation_kinds": [
+        "speech_regions"
+      ],
+      "parameters": {
+        "speech_regions": {
+          "stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "channel": {
+            "type": "integer",
+            "default": -1,
+            "min": -1,
+            "max": 63
+          },
+          "threshold": {
+            "type": "number",
+            "default": 0.5,
+            "min": 0.16,
+            "max": 0.95
+          },
+          "min_speech_duration": {
+            "type": "number",
+            "default": 0.25,
+            "min": 0.0,
+            "max": 60.0
+          },
+          "min_silence_duration": {
+            "type": "number",
+            "default": 0.1,
+            "min": 0.032,
+            "max": 60.0
+          },
+          "speech_pad": {
+            "type": "number",
+            "default": 0.03,
+            "min": 0.0,
+            "max": 5.0
+          }
+        }
+      },
+      "supports": {
+        "timeout": true,
+        "cache": true,
+        "dry_run": true
+      },
+      "provenance": "OBSERVED"
+    },
+    {
+      "tool_id": "media-analysis/video",
+      "skill_id": "media-analysis",
+      "version": "0.1.19",
+      "algorithm_version": "1",
+      "description": "Video format of one video stream (resolution, fps, frame count, pixel format, colour, SAR/DAR, CFR/VFR)",
+      "required_capabilities": [
+        "ffprobe"
+      ],
+      "inputs": [
+        "input"
+      ],
+      "input_type": "media file path (one file per request)",
+      "produces_output": false,
+      "deterministic": true,
+      "writes_media": false,
+      "result_keys": [
+        "observation"
+      ],
+      "kinds": [
+        "video_format"
+      ],
+      "output_observation_kinds": [
+        "video_format"
+      ],
+      "parameters": {
+        "video_format": {
+          "stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          }
+        }
+      },
+      "supports": {
+        "timeout": true,
+        "cache": true,
+        "dry_run": true
+      },
+      "provenance": "OBSERVED"
+    }
+  ],
+  "provides": [
+    {
+      "id": "measure.audio.events",
+      "lifecycle": "EXPERIMENTAL",
+      "tool_id": "media-analysis/events",
+      "kind": "audio_events"
+    },
+    {
+      "id": "measure.audio.probe",
+      "lifecycle": "EXPERIMENTAL",
+      "tool_id": "media-analysis/audio",
+      "kind": "audio_format"
+    },
+    {
+      "id": "measure.media.duration",
+      "lifecycle": "EXPERIMENTAL",
+      "tool_id": "media-analysis/timing",
+      "kind": "duration"
+    },
+    {
+      "id": "measure.video.edit_style",
+      "lifecycle": "EXPERIMENTAL",
+      "tool_id": "media-analysis/style",
+      "kind": "edit_style"
+    },
+    {
+      "id": "measure.media.highlight_signals",
+      "lifecycle": "EXPERIMENTAL",
+      "tool_id": "media-analysis/signals",
+      "kind": "highlight_signals"
+    },
+    {
+      "id": "measure.audio.integrity",
+      "lifecycle": "EXPERIMENTAL",
+      "tool_id": "media-analysis/integrity",
+      "kind": "integrity"
+    },
+    {
+      "id": "measure.audio.loudness",
+      "lifecycle": "EXPERIMENTAL",
+      "tool_id": "media-analysis/loudness",
+      "kind": "loudness"
+    },
+    {
+      "id": "measure.media.probe",
+      "lifecycle": "EXPERIMENTAL",
+      "tool_id": "media-analysis/probe",
+      "kind": "media_probe"
+    },
+    {
+      "id": "measure.audio.noise_floor",
+      "lifecycle": "EXPERIMENTAL",
+      "tool_id": "media-analysis/noise",
+      "kind": "noise_floor"
+    },
+    {
+      "id": "measure.video.scene_detection",
+      "lifecycle": "EXPERIMENTAL",
+      "tool_id": "media-analysis/scenes",
+      "kind": "scene_detection"
+    },
+    {
+      "id": "measure.audio.silence",
+      "lifecycle": "EXPERIMENTAL",
+      "tool_id": "media-analysis/silence",
+      "kind": "silence"
+    },
+    {
+      "id": "measure.audio.speech_regions",
+      "lifecycle": "EXPERIMENTAL",
+      "tool_id": "media-analysis/vad",
+      "kind": "speech_regions"
+    },
+    {
+      "id": "measure.media.stream_layout",
+      "lifecycle": "EXPERIMENTAL",
+      "tool_id": "media-analysis/streams",
+      "kind": "stream_layout"
+    },
+    {
+      "id": "measure.video.timing",
+      "lifecycle": "EXPERIMENTAL",
+      "tool_id": "media-analysis/timing",
+      "kind": "timing"
+    },
+    {
+      "id": "measure.video.probe",
+      "lifecycle": "EXPERIMENTAL",
+      "tool_id": "media-analysis/video",
+      "kind": "video_format"
+    }
+  ],
+  "analysis_kinds": [
+    "media_probe",
+    "stream_layout",
+    "video_format",
+    "audio_format",
+    "duration",
+    "silence",
+    "loudness",
+    "integrity",
+    "scene_detection",
+    "timing",
+    "noise_floor",
+    "edit_style",
+    "speech_regions",
+    "audio_events",
+    "highlight_signals"
+  ],
+  "kind_to_tool": {
+    "media_probe": "media-analysis/probe",
+    "stream_layout": "media-analysis/streams",
+    "video_format": "media-analysis/video",
+    "audio_format": "media-analysis/audio",
+    "duration": "media-analysis/timing",
+    "silence": "media-analysis/silence",
+    "loudness": "media-analysis/loudness",
+    "integrity": "media-analysis/integrity",
+    "scene_detection": "media-analysis/scenes",
+    "timing": "media-analysis/timing",
+    "noise_floor": "media-analysis/noise",
+    "edit_style": "media-analysis/style",
+    "speech_regions": "media-analysis/vad",
+    "audio_events": "media-analysis/events",
+    "highlight_signals": "media-analysis/signals"
+  },
+  "execution": {
+    "mode": "local_subprocess",
+    "canonical_invocation": [
+      "media-analysis",
+      "run",
+      "<request.json | ->",
+      "--json"
+    ],
+    "stdin": "AnalysisRequest JSON (UTF-8) when the request argument is '-'",
+    "stdout": "exactly one response document (response schema) when --json is given; always UTF-8, independent of the console / pipe encoding",
+    "stderr": "diagnostics only; never part of the contract",
+    "executables": [
+      "ffprobe",
+      "ffmpeg"
+    ],
+    "executable_resolution": "PATH lookup only; not configurable through the request or the CLI",
+    "media_processing": false,
+    "network": false,
+    "ai": false,
+    "optional_extras": {
+      "vad": {
+        "kinds": [
+          "speech_regions"
+        ],
+        "requires": [
+          "onnxruntime",
+          "numpy"
+        ],
+        "model": "silero-vad (MIT), shipped in the package",
+        "download_at_run_time": false,
+        "without": "status UNKNOWN, no regions"
+      },
+      "events": {
+        "kinds": [
+          "audio_events"
+        ],
+        "requires": [
+          "onnxruntime",
+          "numpy"
+        ],
+        "model": "YAMNet (Apache-2.0), converted to ONNX and shipped in the package",
+        "download_at_run_time": false,
+        "without": "status UNKNOWN, no spans"
+      }
+    }
+  },
+  "observation_source_format": "media-analysis/<tool>@<version>",
+  "provenance": "OBSERVED",
+  "schema_versions": {
+    "contract": "1",
+    "request": "1",
+    "response": "1",
+    "observation": "1"
+  },
+  "schemas": {
+    "request": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "media-analysis AnalysisRequest",
+      "version": "1",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asset_id",
+        "input",
+        "kind"
+      ],
+      "properties": {
+        "analysis_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "description": "caller's id; derived from the analysis identity when omitted"
+        },
+        "asset_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "description": "caller's label for the asset; echoed, not part of the identity"
+        },
+        "input": {
+          "type": "string",
+          "minLength": 1,
+          "description": "path of one media file (absolute, or relative to the process working directory)"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "media_probe",
+            "stream_layout",
+            "video_format",
+            "audio_format",
+            "duration",
+            "silence",
+            "loudness",
+            "integrity",
+            "scene_detection",
+            "timing",
+            "noise_floor",
+            "edit_style",
+            "speech_regions",
+            "audio_events",
+            "highlight_signals"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "description": "kind-specific parameters; unknown names, wrong types and out-of-range values are INVALID_INPUT"
+        },
+        "timeout": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0,
+          "maximum": 86400,
+          "description": "seconds per analyzer execution"
+        },
+        "cache_policy": {
+          "type": "string",
+          "enum": [
+            "use",
+            "bypass",
+            "only"
+          ],
+          "default": "use",
+          "description": "use: read and write; bypass: never read or write; only: read, CACHE_MISS when absent"
+        },
+        "output_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "round": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9,
+              "default": 3
+            }
+          }
+        }
+      },
+      "x-forbidden-properties": [
+        "command",
+        "argv",
+        "args",
+        "shell",
+        "cmd",
+        "exec"
+      ],
+      "x-parameters-by-kind": {
+        "media_probe": {},
+        "stream_layout": {},
+        "video_format": {
+          "stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          }
+        },
+        "audio_format": {
+          "stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          }
+        },
+        "duration": {},
+        "silence": {
+          "stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "threshold_db": {
+            "type": "number",
+            "default": -40.0,
+            "min": -120.0,
+            "max": 0.0
+          },
+          "min_duration": {
+            "type": "number",
+            "default": 0.5,
+            "min": 0.01,
+            "max": 3600.0
+          },
+          "edge_tolerance": {
+            "type": "number",
+            "default": 0.1,
+            "min": 0.0,
+            "max": 10.0
+          }
+        },
+        "loudness": {
+          "stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          }
+        },
+        "integrity": {
+          "max_error_lines": {
+            "type": "integer",
+            "default": 200,
+            "min": 1,
+            "max": 100000
+          }
+        },
+        "scene_detection": {
+          "stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "threshold": {
+            "type": "number",
+            "default": 10.0,
+            "min": 0.0,
+            "max": 100.0
+          },
+          "min_scene_duration": {
+            "type": "number",
+            "default": 0.5,
+            "min": 0.0,
+            "max": 3600.0
+          }
+        },
+        "timing": {
+          "gap_factor": {
+            "type": "number",
+            "default": 2.5,
+            "min": 1.1,
+            "max": 100.0
+          },
+          "av_mismatch_tolerance": {
+            "type": "number",
+            "default": 0.1,
+            "min": 0.0,
+            "max": 60.0
+          },
+          "av_start_offset_tolerance": {
+            "type": "number",
+            "default": 0.045,
+            "min": 0.0,
+            "max": 60.0
+          }
+        },
+        "noise_floor": {
+          "stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "channel": {
+            "type": "integer",
+            "default": -1,
+            "min": -1,
+            "max": 63
+          },
+          "window": {
+            "type": "number",
+            "default": 0.05,
+            "min": 0.01,
+            "max": 1.0
+          },
+          "noise_percentile": {
+            "type": "number",
+            "default": 10.0,
+            "min": 0.0,
+            "max": 50.0
+          },
+          "signal_percentile": {
+            "type": "number",
+            "default": 95.0,
+            "min": 50.0,
+            "max": 100.0
+          }
+        },
+        "edit_style": {
+          "video_stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "audio_stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "threshold": {
+            "type": "number",
+            "default": 10.0,
+            "min": 0.0,
+            "max": 100.0
+          },
+          "min_shot_duration": {
+            "type": "number",
+            "default": 0.25,
+            "min": 0.0,
+            "max": 3600.0
+          },
+          "silence_threshold_db": {
+            "type": "number",
+            "default": -50.0,
+            "min": -120.0,
+            "max": 0.0
+          },
+          "silence_min_duration": {
+            "type": "number",
+            "default": 0.5,
+            "min": 0.01,
+            "max": 3600.0
+          },
+          "burned_in_interval": {
+            "type": "number",
+            "default": 1.0,
+            "min": 0.0,
+            "max": 60.0
+          }
+        },
+        "speech_regions": {
+          "stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "channel": {
+            "type": "integer",
+            "default": -1,
+            "min": -1,
+            "max": 63
+          },
+          "threshold": {
+            "type": "number",
+            "default": 0.5,
+            "min": 0.16,
+            "max": 0.95
+          },
+          "min_speech_duration": {
+            "type": "number",
+            "default": 0.25,
+            "min": 0.0,
+            "max": 60.0
+          },
+          "min_silence_duration": {
+            "type": "number",
+            "default": 0.1,
+            "min": 0.032,
+            "max": 60.0
+          },
+          "speech_pad": {
+            "type": "number",
+            "default": 0.03,
+            "min": 0.0,
+            "max": 5.0
+          }
+        },
+        "audio_events": {
+          "stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "channel": {
+            "type": "integer",
+            "default": -1,
+            "min": -1,
+            "max": 63
+          },
+          "hop": {
+            "type": "number",
+            "default": 0.1,
+            "min": 0.05,
+            "max": 0.96
+          },
+          "applause_threshold": {
+            "type": "number",
+            "default": 0.3,
+            "min": 0.05,
+            "max": 0.95
+          },
+          "laughter_threshold": {
+            "type": "number",
+            "default": 0.3,
+            "min": 0.05,
+            "max": 0.95
+          },
+          "min_duration": {
+            "type": "number",
+            "default": 0.5,
+            "min": 0.0,
+            "max": 60.0
+          },
+          "merge_gap": {
+            "type": "number",
+            "default": 1.0,
+            "min": 0.0,
+            "max": 60.0
+          }
+        },
+        "highlight_signals": {
+          "audio_stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "video_stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "energy_window": {
+            "type": "number",
+            "default": 0.5,
+            "min": 0.05,
+            "max": 10.0
+          },
+          "peak_db": {
+            "type": "number",
+            "default": 6.0,
+            "min": 0.5,
+            "max": 40.0
+          },
+          "active_floor_db": {
+            "type": "number",
+            "default": -60.0,
+            "min": -120.0,
+            "max": 0.0
+          },
+          "rate_window": {
+            "type": "number",
+            "default": 3.0,
+            "min": 1.0,
+            "max": 30.0
+          },
+          "rate_hop": {
+            "type": "number",
+            "default": 0.5,
+            "min": 0.1,
+            "max": 10.0
+          },
+          "rate_change": {
+            "type": "number",
+            "default": 0.25,
+            "min": 0.05,
+            "max": 5.0
+          },
+          "nucleus_db": {
+            "type": "number",
+            "default": 4.0,
+            "min": 0.5,
+            "max": 30.0
+          },
+          "scene_threshold": {
+            "type": "number",
+            "default": 10.0,
+            "min": 0.0,
+            "max": 100.0
+          },
+          "burst_gap": {
+            "type": "number",
+            "default": 1.5,
+            "min": 0.04,
+            "max": 60.0
+          },
+          "burst_min_cuts": {
+            "type": "integer",
+            "default": 3,
+            "min": 2,
+            "max": 1000
+          }
+        }
+      }
+    },
+    "batch": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "media-analysis request batch",
+      "version": "1",
+      "description": "Document accepted by `media-analysis run`: a single AnalysisRequest, a list of them, or this batch envelope.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requests"
+      ],
+      "properties": {
+        "requests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/request"
+          }
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_analysis_calls": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "timeout": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "max_total_seconds": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "analysis_id",
+        "asset_id",
+        "kind",
+        "status",
+        "cache",
+        "usage"
+      ],
+      "properties": {
+        "analysis_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "asset_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "observation": {
+          "$ref": "#/observation"
+        },
+        "plan": {
+          "type": "object",
+          "description": "dry-run only: analyzer, capabilities and operations that would run"
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message",
+            "details"
+          ],
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "details": {
+              "type": "object"
+            },
+            "class": {
+              "type": "string",
+              "enum": [
+                "FATAL",
+                "RETRYABLE",
+                "BLOCKED"
+              ],
+              "description": "retry guidance: FATAL never retry unchanged; RETRYABLE bounded retry may succeed; BLOCKED environment / budget must change"
+            }
+          }
+        },
+        "error_kind": {
+          "type": "string"
+        },
+        "error_class": {
+          "type": "string",
+          "enum": [
+            "FATAL",
+            "RETRYABLE",
+            "BLOCKED"
+          ]
+        },
+        "cache": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "policy",
+            "key"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "hit",
+                "miss",
+                "invalid",
+                "bypass",
+                "disabled"
+              ]
+            },
+            "policy": {
+              "type": "string",
+              "enum": [
+                "use",
+                "bypass",
+                "only"
+              ]
+            },
+            "key": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "analyzer_calls",
+            "seconds",
+            "operations"
+          ],
+          "properties": {
+            "analyzer_calls": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "seconds": {
+              "type": "number",
+              "minimum": 0
+            },
+            "operations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "executable",
+                  "purpose"
+                ],
+                "properties": {
+                  "executable": {
+                    "type": "string",
+                    "enum": [
+                      "ffprobe",
+                      "ffmpeg"
+                    ]
+                  },
+                  "purpose": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "response": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "media-analysis response",
+      "version": "1",
+      "description": "stdout document of `media-analysis run ... --json` (also used for `analyze` / `probe` with --json)",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "skill",
+        "status",
+        "results",
+        "observations",
+        "usage",
+        "budget",
+        "warnings"
+      ],
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "media-analysis/response@1"
+        },
+        "skill": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "version"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "const": "media-analysis"
+            },
+            "version": {
+              "type": "string"
+            }
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "partial",
+            "error"
+          ],
+          "description": "ok: every result ok; partial: some; error: none (or the batch itself was rejected)"
+        },
+        "dry_run": {
+          "type": "boolean"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/result"
+          }
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/observation"
+          },
+          "description": "observations of the ok results, in request order"
+        },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "analyzer_calls",
+            "cache_hits",
+            "seconds"
+          ],
+          "properties": {
+            "analyzer_calls": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cache_hits": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "seconds": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "calls",
+            "seconds",
+            "budget"
+          ],
+          "properties": {
+            "calls": {
+              "type": "integer"
+            },
+            "seconds": {
+              "type": "number"
+            },
+            "budget": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "max_analysis_calls": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 0
+                },
+                "timeout": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0
+                },
+                "max_total_seconds": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message",
+            "details"
+          ],
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "details": {
+              "type": "object"
+            },
+            "class": {
+              "type": "string",
+              "enum": [
+                "FATAL",
+                "RETRYABLE",
+                "BLOCKED"
+              ],
+              "description": "retry guidance: FATAL never retry unchanged; RETRYABLE bounded retry may succeed; BLOCKED environment / budget must change"
+            }
+          }
+        },
+        "error_kind": {
+          "type": "string"
+        },
+        "error_class": {
+          "type": "string",
+          "enum": [
+            "FATAL",
+            "RETRYABLE",
+            "BLOCKED"
+          ]
+        }
+      }
+    },
+    "observation": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "media-analysis Observation",
+      "version": "1",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "asset_id",
+        "kind",
+        "data",
+        "source",
+        "analysis_id",
+        "observed_at",
+        "analysis",
+        "asset"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^obs_[0-9a-f]{16}$"
+        },
+        "asset_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object",
+          "description": "measured values only; finite numbers; no command / argv keys"
+        },
+        "source": {
+          "type": "string",
+          "pattern": "^media-analysis/[a-z]+@\\d+\\.\\d+\\.\\d+$",
+          "description": "media-analysis/<tool>@<version>; provenance is always OBSERVED"
+        },
+        "analysis_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "observed_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+        },
+        "analysis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "identity",
+            "analyzer",
+            "analyzer_version",
+            "parameters",
+            "seconds"
+          ],
+          "properties": {
+            "identity": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "analyzer": {
+              "type": "string",
+              "pattern": "^media-analysis/[a-z]+$"
+            },
+            "analyzer_version": {
+              "type": "string",
+              "description": "package version that measured this observation (provenance; == the version in source)"
+            },
+            "algorithm_version": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "description": "the analyzer's measurement version; enters the identity and the cache key instead of the package version"
+            },
+            "parameters": {
+              "type": "object",
+              "description": "effective parameters (defaults applied)"
+            },
+            "seconds": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "asset": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "fingerprint",
+            "size"
+          ],
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "fingerprint": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  },
+  "cache": {
+    "policies": [
+      "use",
+      "bypass",
+      "only"
+    ],
+    "statuses": [
+      "hit",
+      "miss",
+      "invalid",
+      "bypass",
+      "disabled"
+    ],
+    "key": [
+      "asset_fingerprint(sha256 of content)",
+      "analyzer",
+      "algorithm_version",
+      "kind",
+      "effective_parameters(canonical JSON)"
+    ],
+    "hit_runs_analyzer": false
+  },
+  "budget": {
+    "supported": [
+      "max_analysis_calls",
+      "timeout",
+      "max_total_seconds"
+    ],
+    "unknown_fields": "INVALID_INPUT",
+    "exceeded": "BUDGET_EXCEEDED, no observation, no analyzer process"
+  },
+  "identity": {
+    "analysis_identity": [
+      "asset_fingerprint",
+      "analyzer",
+      "algorithm_version",
+      "kind",
+      "effective_parameters"
+    ],
+    "canonical_json": true,
+    "observation_id": "obs_<identity[:16]>",
+    "derived_analysis_id": "analysis-<identity[:16]>"
+  },
+  "errors": {
+    "codes": [
+      "INVALID_INPUT",
+      "FILE_NOT_FOUND",
+      "PATH_NOT_ALLOWED",
+      "UNSUPPORTED_FORMAT",
+      "ANALYZER_UNAVAILABLE",
+      "ANALYZER_TIMEOUT",
+      "ANALYSIS_FAILED",
+      "INVALID_RESULT",
+      "BUDGET_EXCEEDED",
+      "CACHE_INVALID",
+      "VERIFICATION_FAILED",
+      "CACHE_MISS"
+    ],
+    "exit_codes": {
+      "INVALID_INPUT": 2,
+      "FILE_NOT_FOUND": 3,
+      "PATH_NOT_ALLOWED": 4,
+      "UNSUPPORTED_FORMAT": 5,
+      "ANALYZER_UNAVAILABLE": 6,
+      "ANALYZER_TIMEOUT": 7,
+      "ANALYSIS_FAILED": 8,
+      "INVALID_RESULT": 9,
+      "BUDGET_EXCEEDED": 10,
+      "CACHE_INVALID": 11,
+      "VERIFICATION_FAILED": 12,
+      "CACHE_MISS": 13
+    },
+    "classes": {
+      "INVALID_INPUT": "FATAL",
+      "FILE_NOT_FOUND": "FATAL",
+      "PATH_NOT_ALLOWED": "FATAL",
+      "UNSUPPORTED_FORMAT": "FATAL",
+      "ANALYZER_UNAVAILABLE": "BLOCKED",
+      "ANALYZER_TIMEOUT": "RETRYABLE",
+      "ANALYSIS_FAILED": "RETRYABLE",
+      "INVALID_RESULT": "FATAL",
+      "BUDGET_EXCEEDED": "BLOCKED",
+      "CACHE_INVALID": "FATAL",
+      "VERIFICATION_FAILED": "FATAL",
+      "CACHE_MISS": "FATAL"
+    },
+    "success_exit_code": 0,
+    "class_semantics": {
+      "FATAL": "terminal: retrying the unchanged request rejects identically",
+      "RETRYABLE": "a bounded retry of the same request may succeed",
+      "BLOCKED": "the environment (executable, filter) or the caller's budget must change first"
+    }
+  },
+  "security": {
+    "forbidden_keys": [
+      "command",
+      "argv",
+      "args",
+      "shell",
+      "cmd",
+      "exec",
+      "filter_complex",
+      "filter",
+      "api_key",
+      "token",
+      "env"
+    ],
+    "forbidden_keys_scope": "whole request document, recursive, case-insensitive",
+    "shell": false,
+    "executable_override": false,
+    "network": false
+  }
+}
