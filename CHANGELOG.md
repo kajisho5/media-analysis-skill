@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.22 - 2026-11-19
+
+- ci(release): resolve the release root once; refuse a committed contract without its generator (#36) (0840dbe)
+
 ## v0.1.21 - 2026-11-19
 
 - ci: call Velisa's contract-diff on contract changes, one run per pull request (#35) (41d290d)
