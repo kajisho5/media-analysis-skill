@@ -1,0 +1,29 @@
+name: Contract diff
+
+# Is this pull request's change to contract/contract.json none, additive or breaking, and which
+# release bump does it need? Velisa's reusable workflow (Velisa ADR-020 and ADR-022) runs System
+# Intelligence's `si contract-diff`, labels the pull request contract:none / additive / breaking
+# and keeps one comment with every change. Report only: it never fails the pull request.
+#
+# The committed file itself is checked against the code by tests/ in CI (contract/generate --check),
+# so Velisa's contract-file-check.yml is not called here as well.
+
+on:
+  pull_request:
+    paths:
+      - "contract/contract.json"
+      - ".github/workflows/contract-diff.yml"
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+# A newer push cancels the run on the older commit, so an old result never lands last.
+concurrency:
+  group: contract-diff-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  contract-diff:
+    uses: kajisho5/Velisa/.github/workflows/contract-diff.yml@main
