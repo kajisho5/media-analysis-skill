@@ -13,8 +13,9 @@ Rule, per pull request merged since the tag (the same as imagemagick-skill's res
                                            -> does not release
 
 The release-level labels are the ones .github/release-drafter.yml's `version-resolver` maps to major,
-minor or patch (RELEASE_LABELS when that file has none), so the two can never disagree; that block
-lists no chore / ci / docs / test label.
+minor or patch, so the two can never disagree; that block lists no chore / ci / docs / test label.
+Without a `version-resolver` block, they are the labels of the categories that carry a
+`semver-increment`, less MAINTENANCE_LABELS; without either, RELEASE_LABELS.
 
 A commit on main that came from no pull request releases unless its subject starts with
 chore / ci / docs / build / test / refactor / style. Nothing releasable since the tag means
@@ -46,17 +47,34 @@ RELEASE_LABELS = frozenset({
     "minor", "feature", "enhancement",
     "patch", "fix", "bug",
 })
+MAINTENANCE_LABELS = frozenset({
+    "chore", "ci", "docs", "documentation", "test", "tests", "maintenance", "refactor", "style", "build",
+    "dependencies", "skip-changelog",
+})
 NON_RELEASING_SUBJECT = re.compile(r"^(chore|ci|docs|build|test|tests|refactor|style)(\(.+\))?!?:", re.I)
 
 
 def drafter_release_labels(text):
-    """The label names `version-resolver` maps to a bump, from release-drafter.yml's text (inline or block lists)."""
+    """The label names `version-resolver` maps to a bump, from release-drafter.yml's text (inline or block lists).
+
+    Without a `version-resolver` block: the labels of the categories with a `semver-increment`, less
+    MAINTENANCE_LABELS. None when the file says neither.
+    """
     m = re.search(r"(?ms)^version-resolver:\n(.*?)(?=^\S)", text + "\nend:")
+    if m:
+        block = re.sub(r"(?m)^\s*default:.*$", "", m.group(1))
+        names = re.findall(r"""['"]([^'"]+)['"]""", block)
+        return frozenset(name.lower() for name in names) or None
+    m = re.search(r"(?ms)^categories:\n(.*?)(?=^\S)", text + "\nend:")
     if not m:
         return None
-    block = re.sub(r"(?m)^\s*default:.*$", "", m.group(1))
-    names = re.findall(r"""['"]([^'"]+)['"]""", block)
-    return frozenset(name.lower() for name in names) or None
+    names = set()
+    for entry in re.split(r"(?m)^  - ", m.group(1)):
+        if "semver-increment:" not in entry:
+            continue
+        for line in re.findall(r"(?m)^\s*labels:\s*\[(.*)\]\s*$", entry):
+            names.update(n.lower() for n in re.findall(r"""['"]([^'"]+)['"]""", line))
+    return frozenset(names - MAINTENANCE_LABELS) or None
 
 
 def release_labels(path=DRAFTER):
