@@ -8,11 +8,10 @@ name: Contract diff
 # The committed file itself is checked against the code by tests/ in CI (contract/generate --check),
 # so Velisa's contract-file-check.yml is not called here as well.
 
+# Every pull request, not only those whose diff touches the contract: a pull request that changed
+# the contract and then reverted it must have its label and comment brought back to contract:none.
 on:
   pull_request:
-    paths:
-      - "contract/contract.json"
-      - ".github/workflows/contract-diff.yml"
 
 permissions:
   contents: read
