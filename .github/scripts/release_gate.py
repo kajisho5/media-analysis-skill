@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Decide whether what was merged since the latest release tag is worth a release (Velisa ADR-023, D37).
+"""Decide whether what was merged since the latest release tag is worth a release (Velisa ADR-023, D37 and its addendum).
 
 Run by .github/workflows/release.yml before the version is resolved, in auto mode only (the version
 in the version file equals the latest tag). A version bumped by hand in a pull request is always
@@ -8,12 +8,14 @@ released; this script is not asked about it.
 Rule, per pull request merged since the tag (the same as imagemagick-skill's resolve_version.py):
 
     a release-level label                  -> releases (release-drafter picks the level)
+    dependencies (Dependabot)              -> releases, as a patch (the ecosystem's rule since the D37 addendum)
     no label at all                        -> releases (a pull request nobody labelled still ships, as a patch)
     any other labels only (chore, ci, docs, documentation, test, maintenance, refactor, ...)
                                            -> does not release
 
 The release-level labels are the ones .github/release-drafter.yml's `version-resolver` maps to major,
-minor or patch, so the two can never disagree; that block lists no chore / ci / docs / test label.
+minor or patch, so the two can never disagree; that block maps `dependencies` to a patch and lists no
+chore / ci / docs / test label.
 Without a `version-resolver` block, they are the labels of the categories that carry a
 `semver-increment`, less MAINTENANCE_LABELS; without either, RELEASE_LABELS.
 
@@ -45,11 +47,11 @@ DRAFTER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 RELEASE_LABELS = frozenset({
     "major", "breaking",
     "minor", "feature", "enhancement",
-    "patch", "fix", "bug",
+    "patch", "fix", "bug", "dependencies",
 })
 MAINTENANCE_LABELS = frozenset({
     "chore", "ci", "docs", "documentation", "test", "tests", "maintenance", "refactor", "style", "build",
-    "dependencies", "skip-changelog",
+    "skip-changelog",
 })
 NON_RELEASING_SUBJECT = re.compile(r"^(chore|ci|docs|build|test|tests|refactor|style)(\(.+\))?!?:", re.I)
 
