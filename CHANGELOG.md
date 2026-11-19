@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.20 - 2026-11-19
+
+- ci: commit the contract as contract/contract.json (#34) (ca358b9)
+
 ## v0.1.19 - 2026-11-13
 
 - docs(roadmap): status of step 11, speech regions in the agent (#33) (32fcb76)
