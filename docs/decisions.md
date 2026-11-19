@@ -634,3 +634,15 @@
   `provides` entries, their parameters, `execution.optional_extras.events`; nothing existing changed (checked by
   comparing the contract document before and after). CI installs `.[vad,events]` on every job; the `audio_events`
   integration tests fail, not skip, when the extra is missing. `doctor` reports `extra:events`.
+
+## ADR-037 The release job tests its commit before pushing it; chore / ci / docs / test pull requests release nothing (Velisa ADR-023, D37)
+
+2026-11-19.
+
+The release commit is pushed with the default token, so no workflow runs on it on main. On 2026-11-19 two skills' mains broke this way (sound-design-skill, hyperframes-skill). Also, every merged pull request released a patch, `ci:` changes included.
+
+The release job now commits and tags locally, runs `tests/test_unit.py`, `tests/test_contract.py`, `tests/test_contract_file.py`, `tests/test_release_labels.py`, `tests/test_release_script.py` and `tests/test_release_gate.py` on that commit, and only then pushes. A failure pushes nothing.
+
+`.github/scripts/release_gate.py` lets a push release only when a pull request merged since the latest tag carries a release-level label or no label at all. The release-level labels are the ones `.github/release-drafter.yml`'s `version-resolver` maps to a bump. A pull request labelled only chore, ci, documentation, docs, test or similar releases nothing. This is imagemagick-skill's rule. release-drafter's `default` accepts only major, minor or patch, so the gate runs first, and the maintenance labels no longer map to a patch.
+
+A version bumped by hand in a pull request is released whatever its labels. The contract is unchanged.

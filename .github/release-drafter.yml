@@ -48,7 +48,11 @@ version-resolver:
   minor:
     labels: ["minor", "feature", "enhancement"]
   patch:
-    labels: ["fix", "bug", "chore", "docs", "ci", "dependencies"]
+    labels: ["fix", "bug", "dependencies"]
+  # Only release-level labels bump: a pull request labelled only chore / ci / docs / test releases nothing
+  # (.github/scripts/release_gate.py, Velisa ADR-023, imagemagick-skill's rule). release-drafter's `default` accepts
+  # only major, minor or patch, so the gate decides "no release" first; `default` is reached only by a pull request
+  # with no label at all, which still ships as a patch.
   default: patch
 
 template: |
