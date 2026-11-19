@@ -33,10 +33,20 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 .github/scripts/dependabot_release_labels.py
 
+      # Velisa ADR-023: pull requests labelled only chore / ci / docs / test release nothing. release-drafter's
+      # `default` cannot say "no release", so release_gate.py answers that from the merged pull requests' labels.
+      - name: Decide whether anything merged since the latest tag is releasable
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/scripts/release_gate.py
+
       # Dry run: only resolves the next version from the labels of PRs merged since the last release
       # (release-drafter.yml's version-resolver; unlabeled PRs default to patch). Creates no draft, no release.
+      # Skipped when the gate found nothing releasable: an empty RESOLVED_VERSION is "nothing to release" in release.py.
       - name: Resolve next version (release-drafter, dry run)
         id: drafter
+        if: steps.gate.outputs.releasable != 'false'
         # v7's dry-run resolves without writing a draft. v6 with disable-releaser skipped the drafting
         # that computes resolved_version, so every release after the first would have found it empty
         # and quietly released nothing.
@@ -62,6 +72,14 @@ jobs:
           RESOLVED_VERSION: ${{ steps.drafter.outputs.resolved_version }}
           HAS_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN != '' }}
         run: python .github/scripts/release.py
+
+      # The release commit is pushed with GITHUB_TOKEN, so no workflow runs on it on main: test it here, before
+      # it is pushed. A failure stops the release; main and the tags stay as they were (Velisa ADR-023).
+      - name: Test the release commit before pushing it
+        if: steps.release.outputs.released == 'true'
+        run: |
+          python3 -m pip install -q -e . pytest
+          python3 -m pytest -q tests/test_unit.py tests/test_contract.py tests/test_contract_file.py tests/test_release_labels.py tests/test_release_script.py tests/test_release_gate.py
 
       - name: Push release commit and tag
         if: steps.release.outputs.released == 'true'
