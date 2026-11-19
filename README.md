@@ -244,6 +244,11 @@ caller's retry policy: `FATAL` (never retry unchanged), `RETRYABLE` (bounded ret
 
 ## Versioning
 
+`contract/contract.json` is the same contract committed as a file (byte for byte the `media-analysis contract --json` output),
+so any release's contract is `git show vX.Y.Z:contract/contract.json`, with nothing installed or run. Regenerate it
+with `python contract/generate.py` after a contract change: a test fails when it is stale, and the release workflow
+regenerates it after the version bump.
+
 - Package / Skill version: single-sourced from `pyproject.toml` (`media_analysis.VERSION`; read the live value with
   `media-analysis --version` or `contract --json` → `version`). The release workflow bumps it on every merge to
   `main`, so this README does not repeat the number. Every tool carries the package version (`tools[].version`);

@@ -27,6 +27,7 @@ from typing import List, Optional
 ROOT = Path(os.environ["RELEASE_SCRIPT_ROOT"]) if os.environ.get("RELEASE_SCRIPT_ROOT") else Path(__file__).resolve().parent.parent.parent
 PYPROJECT = ROOT / "pyproject.toml"
 CHANGELOG = ROOT / "CHANGELOG.md"
+CONTRACT_GENERATOR = ROOT / "contract" / "generate.py"
 VERSION_RE = re.compile(r'^version\s*=\s*"([^"]+)"', re.MULTILINE)
 TAG_RE = re.compile(r"^v?(\d+\.\d+\.\d+)$")
 
@@ -130,6 +131,12 @@ def main() -> int:
 
     if normalize(current) != new_version:
         write_version(new_version)
+    # contract/contract.json carries the version: regenerate it after the bump and commit it with the release, so
+    # the tag's committed file is that tag's own `contract --json` output
+    release_files = ["pyproject.toml", "CHANGELOG.md"]
+    if CONTRACT_GENERATOR.exists():
+        run(sys.executable, str(CONTRACT_GENERATOR))
+        release_files.append("contract/contract.json")
 
     entries = changelog_entries(tag)
     notes = write_changelog(new_version, entries)
@@ -139,10 +146,10 @@ def main() -> int:
 
     run("git", "config", "user.name", "github-actions[bot]")
     run("git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
-    run("git", "add", "pyproject.toml", "CHANGELOG.md")
+    run("git", "add", *release_files)
     # nothing to commit is possible only if write_version() was a no-op and the changelog section is identical
     # to one already present (re-run on the same commit); guard rather than let `git commit` fail the job.
-    status = run("git", "status", "--porcelain", "--", "pyproject.toml", "CHANGELOG.md")
+    status = run("git", "status", "--porcelain", "--", *release_files)
     if status:
         run("git", "commit", "-m", f"Release {new_tag}")
     run("git", "tag", "-a", new_tag, "-m", f"Release {new_tag}")
