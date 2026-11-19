@@ -24,7 +24,8 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-ROOT = Path(os.environ["RELEASE_SCRIPT_ROOT"]) if os.environ.get("RELEASE_SCRIPT_ROOT") else Path(__file__).resolve().parent.parent.parent
+# resolved once: run() starts every command in ROOT, so a relative root would be looked up again inside itself
+ROOT = (Path(os.environ["RELEASE_SCRIPT_ROOT"]) if os.environ.get("RELEASE_SCRIPT_ROOT") else Path(__file__).parent.parent.parent).resolve()
 PYPROJECT = ROOT / "pyproject.toml"
 CHANGELOG = ROOT / "CHANGELOG.md"
 CONTRACT_GENERATOR = ROOT / "contract" / "generate.py"
@@ -129,6 +130,11 @@ def main() -> int:
 
     print(f"Releasing {new_tag} ({reason})")
 
+    # a committed contract carries the version, so without its generator the tag would carry a stale one:
+    # refuse before anything is written
+    if run("git", "ls-files", "--", "contract/contract.json") and not CONTRACT_GENERATOR.exists():
+        raise RuntimeError("contract/contract.json is committed but contract/generate.py is missing: "
+                           "the release cannot regenerate the contract")
     if normalize(current) != new_version:
         write_version(new_version)
     # contract/contract.json carries the version: regenerate it after the bump and commit it with the release, so
