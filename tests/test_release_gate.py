@@ -42,6 +42,13 @@ class ReleaseGateTests(unittest.TestCase):
         for labels in (["ci"], ["docs"], ["documentation"], ["chore"], ["test"], ["ci", "docs", "contract:none"]):
             self.assertFalse(self.gate.pull_releases(labels), labels)
 
+    def test_dependencies_pull_requests_release_as_a_patch(self):
+        # Velisa D37 addendum: a pull request labelled `dependencies` (Dependabot) is released, as a patch.
+        self.assertIn("dependencies", self.gate.release_labels())
+        for labels in (["dependencies"], ["dependencies", "github_actions"], ["dependencies", "chore"]):
+            self.assertTrue(self.gate.pull_releases(labels), labels)
+        self.assertTrue(self.gate.decide([("chore(deps): bump x (#3)", [["dependencies"]])])[0])
+
     def test_decide_over_the_commits_since_the_tag(self):
         self.assertFalse(self.gate.decide([("ci: x (#1)", [["ci"]]), ("docs: y (#2)", [["documentation"]])])[0])
         self.assertTrue(self.gate.decide([("ci: x (#1)", [["ci"]]), ("fix: y (#2)", [["fix"]])])[0])

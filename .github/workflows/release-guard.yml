@@ -1,0 +1,19 @@
+name: Release guard
+
+# Velisa's reusable release-guard.yml (Velisa ADR-022, decision D36): the release tag's
+# contract/contract.json must say the tag's version. It releases nothing.
+
+# The release job ('release') pushes its tag with GITHUB_TOKEN, which starts no workflow, so this
+# runs when that job has finished.
+on:
+  workflow_run:
+    workflows: ["release"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-guard:
+    uses: kajisho5/Velisa/.github/workflows/release-guard.yml@main
