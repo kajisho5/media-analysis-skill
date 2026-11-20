@@ -84,5 +84,34 @@ class ReleaseWorkflowOrderTests(unittest.TestCase):
         self.assertEqual(installed_extras(step), ci)
 
 
+class ContractLabelGateTests(unittest.TestCase):
+    """contract:none / additive / breaking come from the contract-diff bot (Velisa ADR-020), not from a person.
+
+    They say nothing about the release level, so the gate does not count them: a fix pull request whose only
+    label is contract:none must still release (as an unlabelled one does), not be held back as "other labels only".
+    """
+
+    def setUp(self):
+        self.gate = _load_gate()
+
+    def test_contract_labels_alone_count_as_no_label(self):
+        for labels in (["contract:none"], ["contract:additive"], ["contract:breaking"], ["Contract:None"]):
+            self.assertTrue(self.gate.pull_releases(labels), labels)
+        self.assertTrue(self.gate.decide([("Handle an empty input file (#7)", [["contract:none"]])])[0])
+
+    def test_contract_labels_leave_the_other_labels_verdict_unchanged(self):
+        for labels in (["fix", "contract:none"], ["dependencies", "contract:additive"], ["fix", "contract:breaking"]):
+            self.assertTrue(self.gate.pull_releases(labels), labels)
+        for labels in (["chore", "contract:none"], ["ci", "contract:additive"], ["documentation", "contract:breaking"]):
+            self.assertFalse(self.gate.pull_releases(labels), labels)
+        self.assertFalse(self.gate.decide([("ci: x (#1)", [["ci", "contract:none"]])])[0])
+
+    def test_a_contract_label_that_version_resolver_maps_still_counts(self):
+        # Should a release-drafter.yml ever map a contract:* label to a bump, the gate follows it.
+        release = frozenset({"fix", "contract:breaking"})
+        self.assertTrue(self.gate.pull_releases(["chore", "contract:breaking"], release))
+        self.assertFalse(self.gate.pull_releases(["chore", "contract:none"], release))
+
+
 if __name__ == "__main__":
     unittest.main()

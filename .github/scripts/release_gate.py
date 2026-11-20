@@ -10,6 +10,7 @@ Rule, per pull request merged since the tag (the same as imagemagick-skill's res
     a release-level label                  -> releases (release-drafter picks the level)
     dependencies (Dependabot)              -> releases, as a patch (the ecosystem's rule since the D37 addendum)
     no label at all                        -> releases (a pull request nobody labelled still ships, as a patch)
+    contract:* only (contract-diff bot)    -> counts as no label at all, so it releases
     any other labels only (chore, ci, docs, documentation, test, maintenance, refactor, ...)
                                            -> does not release
 
@@ -18,6 +19,12 @@ minor or patch, so the two can never disagree; that block maps `dependencies` to
 chore / ci / docs / test label.
 Without a `version-resolver` block, they are the labels of the categories that carry a
 `semver-increment`, less MAINTENANCE_LABELS; without either, RELEASE_LABELS.
+
+The contract:none / contract:additive / contract:breaking labels are put on every pull request by Velisa's
+contract-diff workflow (ADR-020). They describe the contract change, not the release level, so they are left
+out before the rule above is applied (CONTRACT_LABEL_PREFIX); otherwise a fix pull request carrying only
+`contract:none` would count as "other labels only" and release nothing. A contract:* label that
+`version-resolver` itself maps to a bump is still counted.
 
 A commit on main that came from no pull request releases unless its subject starts with
 chore / ci / docs / build / test / refactor / style. Nothing releasable since the tag means
@@ -53,6 +60,8 @@ MAINTENANCE_LABELS = frozenset({
     "chore", "ci", "docs", "documentation", "test", "tests", "maintenance", "refactor", "style", "build",
     "skip-changelog",
 })
+# Labels the contract-diff bot puts on every pull request (Velisa ADR-020); not a release level.
+CONTRACT_LABEL_PREFIX = "contract:"
 NON_RELEASING_SUBJECT = re.compile(r"^(chore|ci|docs|build|test|tests|refactor|style)(\(.+\))?!?:", re.I)
 
 
@@ -88,11 +97,16 @@ def release_labels(path=DRAFTER):
 
 
 def pull_releases(labels, release=None):
-    """True when one merged pull request with these label names is worth a release."""
+    """True when one merged pull request with these label names is worth a release.
+
+    contract:* labels from the contract-diff bot are not counted, unless `release` names them.
+    """
+    release = release_labels() if release is None else release
     names = {name.lower() for name in labels}
+    names = {name for name in names if not name.startswith(CONTRACT_LABEL_PREFIX) or name in release}
     if not names:
         return True
-    return bool(names & (release_labels() if release is None else release))
+    return bool(names & release)
 
 
 def decide(commits, release=None):
