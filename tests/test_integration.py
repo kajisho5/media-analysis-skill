@@ -622,7 +622,7 @@ def test_timeout_keeps_the_protocol(media, tmp_path):
 
 # ---- real media matrix: every kind on every fixture yields a contract-conformant ok or error result
 AUDIO_KINDS = {"audio_format", "silence", "loudness", "noise_floor", "speech_regions", "audio_events"}
-VIDEO_KINDS = {"video_format", "scene_detection"}
+VIDEO_KINDS = {"video_format", "scene_detection", "picture_quality"}
 
 
 def test_real_media_matrix(media, tmp_path):
@@ -841,6 +841,23 @@ def test_highlight_signals_on_known_construction(media, tmp_path):
     assert r["direction"] == "faster" and abs(r["start"] - 7.0) <= 0.5 and abs(r["end"] - 10.0) <= 0.5 and abs(r["score"] - 2.0) < 0.2
     bursts = d["screen_change_bursts"]
     assert bursts["cut_count"] == 6 and bursts["spans"] == [{"start": 6.0, "end": 8.0, "duration": 2.0, "cut_count": 6, "score": 3.0}]
+
+
+def test_picture_quality_on_known_construction(media, tmp_path):
+    """picture.mp4: steady 0-2 s, soft 2-4 s, shaky 4-6 s, dark 6-8 s (ADR-040). Facts per 1 s window, no threshold applied."""
+    o = run(engine(tmp_path), media["picture"], "picture_quality")
+    d = o["data"]
+    assert o["source"] == f"media-analysis/picture@{VERSION}"
+    w = d["windows"]
+    assert len(w) == 8 and [x["start"] for x in w] == [float(i) for i in range(8)] and all(x["frames"] == 5 for x in w)
+    sharp = [w[i]["blur"] for i in (0, 1, 4, 5, 6, 7)]
+    soft = [w[i]["blur"] for i in (2, 3)]
+    assert min(soft) > 2 * max(sharp)                                   # blurdetect: higher is blurrier
+    assert all(w[i]["jitter"] < 0.1 and w[i]["speed"] < 0.5 for i in (0, 1, 7))   # still frame: no camera motion
+    assert all(w[i]["jitter"] > 2.0 for i in (4, 5))                     # the crop jumps up to 40 px of 640: shake
+    assert all(115 < w[i]["luma_mean"] < 135 for i in range(6)) and all(25 < w[i]["luma_mean"] < 38 for i in (6, 7))
+    assert w[7]["luma_p90"] < 60 < w[0]["luma_p90"]
+    assert d["summary"]["frames_without_edges"] == 0
 
 
 def test_highlight_signals_missing_streams_are_not_performed(media, tmp_path):

@@ -673,3 +673,36 @@ An index written before this change keeps a clip's old tag until that file chang
 The first release after ADR-037 (the merge of #41) stopped at "Test the release commit before pushing it": `tests/test_unit.py::test_audio_event_score_is_any_of_the_classes` imports numpy, and the step installed only `-e . pytest`. The test dates from v0.1.18 (ADR-036) and the runner image did not change; the step was new in ADR-037 and no release had run it until then. The test job in `tests.yml` installs the optional extras `[vad,events]` so that these kinds are measured, and the test runs there with numpy.
 
 The release step now installs `-e ".[vad,events]" pytest`, the same as `tests.yml`. The test is not skipped and not changed. `tests/test_release_gate.py` checks that the two installs name the same extras, so they cannot drift apart again. The contract is unchanged.
+
+## ADR-040 Picture facts per window: sharpness, exposure and camera jitter (`picture_quality`, Velisa ADR-033)
+- Context: batch selects (Velisa ADR-033, D48). The agent keeps or rejects each shot of 1–50 clips and says why. Shot
+  boundaries (`scene_detection`), silence (`silence`) and speech (`speech_regions`) are measured here already, and black /
+  frozen frames by qc-skill `inspect`. Nothing measured sharpness, exposure or camera shake, so the agent's take
+  selection lists them as `unmeasured` (its ADR-053).
+- Decision: one new kind, `picture_quality` (tool `media-analysis/picture`, `measure.video.picture_quality`, Capability
+  `EXPERIMENTAL`, filters `blurdetect` and `signalstats`), facts per window of `window` seconds (default 1.0):
+  - `blur`: the median of ffmpeg `blurdetect` over the window's frames (sampled at 5 fps, scaled to 640 px wide).
+    Higher is blurrier. A frame with no edges gives `null` (blurdetect prints `-nan`), never 0.
+  - `luma_mean`, `luma_p10`, `luma_p90`: `signalstats` `YAVG`, `YLOW`, `YHIGH`.
+  - `jitter`, `speed`: camera motion from 160 px gray frames at 10 fps. Block-median projection shifts (4 × 3 blocks,
+    profiles matched by mean absolute difference up to 12 % of the width, sub-pixel by a parabola) give the camera path.
+    `jitter` is the RMS distance from its 0.5 s centred moving average (shake, not a pan), and `speed` is the mean shift
+    per second, both in percent of the width.
+  - No threshold, no verdict. Whether a window is soft, dark or shaky is the caller's decision.
+- Why these methods: they use the engine's own filters and the standard library only, so the core install measures
+  them. Projection profiles make global motion cheap enough for pure Python: about 0.2 s per 10 s of video at the
+  defaults. The median over blocks keeps a subject moving through part of the frame from reading as camera motion.
+  Rejected:
+  - ffmpeg `vidstabdetect`, which needs libvidstab and writes a transforms file (an analyzer writes no files);
+  - `mestimate`, whose motion vectors are side data that `metadata=print` does not print;
+  - a Laplacian-variance sharpness in Python, slower than blurdetect at the same scale and just as content-dependent.
+- Measured on synthetic clips (testsrc2 frames, 640x360):
+  - blur: 4.8 sharp, 14.6 under a sigma-4 Gaussian blur. A sharp fractal reads 8.6, so compare shots of like material;
+  - jitter: 0.0 on a still frame, 0.09 on a 25 px/s pan, 3–4.6 when the crop jumps up to ±40 px per frame. testsrc2's
+    own moving parts read 0.6–0.9;
+  - speed: 3.92 %/s on the pan (exactly 25 / 640);
+  - luma: mean 126 normal, 31 after ×0.25.
+- Contract: additive (one tool, one kind, one `provides` entry, its parameters, two filter capabilities). A minor
+  release (0.2.0).
+- Verification: `tests/test_unit.py` (frame shift, no texture → `None`, sub-sample shift, pan vs shake jitter, parser and
+  windows), `tests/test_integration.py::test_picture_quality_on_known_construction`, eval case 21 (`picture.mp4`).

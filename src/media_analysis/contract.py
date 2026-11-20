@@ -104,6 +104,16 @@ PARAMETER_SCHEMAS: Dict[str, Dict[str, Dict[str, Any]]] = {
         "burst_gap": {"type": _NUM, "default": 1.5, "min": 0.04, "max": 60.0},
         "burst_min_cuts": {"type": _INT, "default": 3, "min": 2, "max": 1000},
     },
+    # ADR-040: per-window sharpness (blurdetect), exposure (signalstats) and camera jitter / speed; facts, no threshold
+    "picture_quality": {
+        "stream": {"type": _INT, "default": 0, "min": 0, "max": 63},
+        "window": {"type": _NUM, "default": 1.0, "min": 0.1, "max": 60.0},
+        "sample_rate": {"type": _NUM, "default": 5.0, "min": 0.5, "max": 60.0},
+        "width": {"type": _INT, "default": 640, "min": 64, "max": 3840},
+        "motion_rate": {"type": _NUM, "default": 10.0, "min": 2.0, "max": 60.0},
+        "motion_width": {"type": _INT, "default": 160, "min": 64, "max": 640},
+        "smooth": {"type": _NUM, "default": 0.5, "min": 0.2, "max": 10.0},
+    },
 }
 
 # kind -> tool (one tool serves one or more kinds)
@@ -123,6 +133,7 @@ KIND_TO_TOOL: Dict[str, str] = {
     "speech_regions": "vad",
     "audio_events": "events",
     "highlight_signals": "signals",
+    "picture_quality": "picture",
 }
 ANALYSIS_KINDS = tuple(KIND_TO_TOOL)
 
@@ -141,6 +152,7 @@ TOOL_DESCRIPTIONS: Dict[str, str] = {
     "vad": "Speech regions of one audio stream from a voice-activity model (optional extra 'vad'; UNKNOWN without it): time ranges with probability, speech share, longest pause",
     "events": "Applause and laughter spans of one audio stream from an audio-event classifier (optional extra 'events'; UNKNOWN without it): time ranges with a score",
     "signals": "Highlight signals measured, not judged: speech-energy peaks, speaking-rate changes and screen-change bursts, each as time ranges with a score",
+    "picture": "Picture facts per window, not judged: sharpness (blurdetect), luma mean / 10th / 90th percentile (signalstats), camera jitter and speed from block-median frame shifts",
 }
 
 TOOL_CAPABILITIES: Dict[str, List[str]] = {
@@ -158,6 +170,7 @@ TOOL_CAPABILITIES: Dict[str, List[str]] = {
     "vad": ["ffprobe", "ffmpeg"],
     "events": ["ffprobe", "ffmpeg"],
     "signals": ["ffprobe", "ffmpeg", "filter:astats", "filter:scdet"],
+    "picture": ["ffprobe", "ffmpeg", "filter:blurdetect", "filter:signalstats"],
 }
 
 
@@ -203,6 +216,9 @@ CAPABILITY_IDS: Dict[str, str] = {
     # qc-skill judges, it does not list moments)
     "audio_events": "measure.audio.events",
     "highlight_signals": "measure.media.highlight_signals",
+    # ADR-040: new id, not a collision (qc-skill checks black / frozen frames and legal range against rules; nothing measures
+    # sharpness, exposure percentiles or camera jitter per window)
+    "picture_quality": "measure.video.picture_quality",
 }
 
 

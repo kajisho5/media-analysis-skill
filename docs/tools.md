@@ -22,6 +22,7 @@ and the contract disagree.
 | `media-analysis/vad` | `speech_regions` | ffprobe, ffmpeg (+ optional extra `vad`: onnxruntime, numpy) | probe + ffmpeg `-af [pan,]aresample=16000 -ac 1 -f f32le -` (stdout) into the voice-activity model in-process |
 | `media-analysis/events` | `audio_events` | ffprobe, ffmpeg (+ optional extra `events`: onnxruntime, numpy) | probe + ffmpeg `-af [pan,]aresample=16000 -ac 1 -f f32le -` (stdout) into the audio-event classifier in-process |
 | `media-analysis/signals` | `highlight_signals` | ffprobe, ffmpeg, filter:astats, filter:scdet | probe + ffmpeg `-af aresample,aformat,highpass,lowpass,asetnsamples,astats=reset=1,ametadata=print -f null -` + `-vf scdet,metadata=print -f null -` |
+| `media-analysis/picture` | `picture_quality` | ffprobe, ffmpeg, filter:blurdetect, filter:signalstats | probe + ffmpeg `-vf fps,scale,format,blurdetect,signalstats,metadata=print -f null -` + frames `fps,scale,format=gray -f rawvideo -` (stdout) |
 
 Every analyzer runs ffprobe at most once per request (shared context). Stream ordinals (`stream` parameter) follow
 ffmpeg's `0:v:N` / `0:a:N` numbering; attached pictures (cover art) are not video streams.
@@ -178,6 +179,26 @@ method` (ADR-036).
 - Span edges are typically within 0.1–0.3 s of the sound; laughter weakens first under noise and talk (ADR-036 has
   the measured figures). Cheering alone is not applause. Measured, not judged: which reaction makes a clip is the
   caller's decision. `media-analysis highlights --signals` takes this observation as it is.
+
+## `picture_quality` (parameters `stream, window, sample_rate, width, motion_rate, motion_width, smooth`)
+
+`stream_index, stream_ordinal, duration, method{sharpness, exposure, motion}, parameters, sampled_frames, motion_frames,
+windows[{start, end, frames, blur, luma_mean, luma_p10, luma_p90, jitter, speed}], window_count, summary{blur_median,
+luma_mean, jitter, frames_without_edges, frame_pairs_without_texture}` (ADR-040). No model; facts per window of `window`
+seconds (default 1.0, the last one clipped to the duration), never a verdict.
+
+- `blur`: the median of ffmpeg `blurdetect` over the window's frames, sampled at `sample_rate` (5 fps) and scaled to
+  `width` (640) pixels. Higher is blurrier. It depends on the content (a detailed picture reads higher than a plain
+  one), so compare shots of the same material. A frame with no edges (black, flat) has no value: `null`, not 0.
+- `luma_mean`, `luma_p10`, `luma_p90`: ffmpeg `signalstats` `YAVG`, `YLOW`, `YHIGH` (8-bit codes; limited-range black is 16).
+- `jitter`, `speed`: camera motion from gray frames at `motion_rate` (10 fps), `motion_width` (160) pixels wide. Each
+  frame is split into 4 × 3 blocks. Each block's column and row projection profiles are matched to the previous frame's,
+  up to 12 % of the width and refined to a sub-pixel shift, and the median over the textured blocks is the frame's
+  shift, so a subject crossing part of the frame is not camera motion. `jitter` is the RMS distance of the camera path
+  (the running sum of the shifts) from its centred moving average over `smooth` (0.5 s), in percent of the width. It
+  measures shake, not a pan. `speed` is the mean shift per second in percent of the width.
+- Measured, not judged: what counts as soft, dark or shaky is the caller's decision (the agent's selects rule, Velisa
+  ADR-033).
 
 ## `highlight_signals` (parameters `audio_stream, video_stream, energy_window, peak_db, active_floor_db, rate_window, rate_hop, rate_change, nucleus_db, scene_threshold, burst_gap, burst_min_cuts`)
 

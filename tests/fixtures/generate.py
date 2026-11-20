@@ -45,6 +45,9 @@ Every fixture has a known construction so expected values in tests and evals are
                   frames, so six cuts 0.4 s apart at 6.0-8.0 s (one burst) and none elsewhere. Audio: a 500 Hz tone,
                   amplitude 0.05, under a raised-cosine envelope of 4 syllables per second, 8 per second for t = 7..10 s
                   (a speaking-rate change), the amplitude x4 (+12 dB) for t = 11..12.5 s (an energy peak)
+  picture.mp4     8 s, 640x360 @25 H.264, no audio: one still frame of testsrc2 (800x450) cropped to 640x360 at (80, 45);
+                  2-4 s Gaussian blur sigma 4 (soft), 4-6 s the crop window jumps up to +-40 / +-25 px every frame (shake),
+                  6-8 s luma x0.25 (dark: mean about 31 of 255). The picture never pans and nothing else moves
 """
 from __future__ import annotations
 
@@ -176,6 +179,11 @@ def reaction_labels() -> Dict[str, Tuple[float, float]]:
     return {name: (start, round(start + _decoded_seconds(MEDIA / clip), 4)) for name, clip, start in REACTIONS}
 
 
+# picture_quality fixture (ADR-040): steady 0-2 s, soft 2-4 s, shaky 4-6 s, dark 6-8 s
+PICTURE_GRAPH = ("crop=640:360:x='if(between(t\\,4\\,6)\\,80+40*(random(1)*2-1)\\,80)':y='if(between(t\\,4\\,6)\\,45+25*(random(2)*2-1)\\,45)',"
+                 "gblur=sigma=4:enable='between(t,2,4)',lutyuv=y='val*0.25':enable='gte(t,6)'")
+
+
 def available() -> bool:
     return shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
 
@@ -218,7 +226,8 @@ def build_all(directory: Path) -> Dict[str, Path]:
         "noisy": "noisy.wav", "cleaned": "cleaned.wav", "av_offset": "av_offset.mkv",
         "style_a": "style_a.mp4", "style_b": "style_b.mkv", "portrait": "portrait.mp4", "talk": "talk.wav",
         "burned": "burned.mp4", "clean": "clean.mp4", "speech": "speech.wav", "speech_music": "speech_music.wav",
-        "speech_noise": "speech_noise.wav", "music": "music.wav", "reactions": "reactions.wav", "signals": "signals.mp4"}.items()}
+        "speech_noise": "speech_noise.wav", "music": "music.wav", "reactions": "reactions.wav", "signals": "signals.mp4",
+        "picture": "picture.mp4"}.items()}
     _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-f", "lavfi", "-i", f"aevalsrc='{TONE_GATED}':s=48000", "-t", "6",
           *X264, "-c:a", "aac", "-shortest", str(f["av"])])
     _run(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-t", "4", *X264, str(f["video_only"])])
@@ -271,6 +280,8 @@ def build_all(directory: Path) -> Dict[str, Path]:
     inputs, graph = _shots_video(SIGNALS_SHOTS)
     _run([*inputs, "-f", "lavfi", "-i", f"aevalsrc='{SIGNALS_AUDIO}':s=48000", "-filter_complex", graph, "-map", "[v]",
           "-map", f"{len(SIGNALS_SHOTS)}:a", "-t", "14", *X264, "-c:a", "aac", str(f["signals"])])
+    _run(["-f", "lavfi", "-i", "testsrc2=size=800x450:rate=25,trim=end_frame=1,loop=loop=-1:size=1,setpts=N/25/TB", "-vf", PICTURE_GRAPH,
+          "-t", "8", *X264, str(f["picture"])])
     data = bytearray(f["av"].read_bytes())
     mid = len(data) // 2
     data[mid:mid + 3000] = b"\x00" * 3000

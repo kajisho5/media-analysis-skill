@@ -1,6 +1,6 @@
 # Repository state
 
-Last updated: 2026-11-13 for roadmap step 5 (`audio_events`, `highlight_signals`); sections not touched then were checked on 2026-10-30
+Last updated: 2026-11-20 for roadmap step 12 (`picture_quality`); 2026-11-13 for roadmap step 5 (`audio_events`, `highlight_signals`); sections not touched then were checked on 2026-10-30
 against `main` at `45d07ad` (Release v0.1.3). Every statement below was checked
 against the code, a command run or the GitHub API on that date; anything that could not be checked is marked
 **unverified**.
@@ -29,7 +29,7 @@ against the code, a command run or the GitHub API on that date; anything that co
   `highlights` (candidates of a long recording on sentence boundaries, with reasons; applause / laughter spans come
   from the caller, for example this Skill's `audio_events` observation; ADR-032, ADR-036).
 - Contract `media-analysis/contract@1` (`schema_versions`: contract / request / response / observation all `1`).
-  14 tools, 15 analysis kinds, derived from the analyzer registry:
+  15 tools, 16 analysis kinds, derived from the analyzer registry:
 
   | Tool | Kinds | Capability id (`provides`) |
   |---|---|---|
@@ -47,9 +47,10 @@ against the code, a command run or the GitHub API on that date; anything that co
   | `media-analysis/vad` | `speech_regions` | `measure.audio.speech_regions` (ADR-035, roadmap step 4) |
   | `media-analysis/events` | `audio_events` | `measure.audio.events` (ADR-036, roadmap step 5) |
   | `media-analysis/signals` | `highlight_signals` | `measure.media.highlight_signals` (ADR-036, roadmap step 5) |
+  | `media-analysis/picture` | `picture_quality` | `measure.video.picture_quality` (ADR-040, roadmap step 12) |
 
-  All 15 `provides` entries are lifecycle `EXPERIMENTAL`. Required environment capabilities (`capability_names`):
-  `ffmpeg`, `ffprobe`, `filter:astats`, `filter:ebur128`, `filter:edgedetect`, `filter:scdet`, `filter:silencedetect`.
+  All 16 `provides` entries are lifecycle `EXPERIMENTAL`. Required environment capabilities (`capability_names`):
+  `ffmpeg`, `ffprobe`, `filter:astats`, `filter:blurdetect`, `filter:ebur128`, `filter:edgedetect`, `filter:scdet`, `filter:signalstats`, `filter:silencedetect`.
 - Acceptance measurements (ADR-029, roadmap step 3): `noise_floor` (window-RMS noise floor / signal level /
   no-reference SNR estimate, one channel or all) for voice-enhance-skill's ISOLATE / BLEED_REDUCE acceptance, and
   `timing.av_start_offset` (audio vs video start time, ITU-R BT.1359-1 45 ms default tolerance) for remux / dubbing.
@@ -102,12 +103,12 @@ against the code, a command run or the GitHub API on that date; anything that co
 - No other caller found in the sibling checkouts; whether anything outside them calls it is **unverified**.
 
 ## Tests and CI
-- `python -m pytest -q`: **178 tests** on 2026-11-20 (ADR-039 adds a check that the release test step installs the extras `tests.yml` installs).
+- `python -m pytest -q`: **217 tests** on 2026-11-20 (ADR-040 adds `picture_quality`: four unit tests and one integration test).
 - `python -m pytest -q`: **177 passed** locally on 2026-11-20 (with `tests/test_timebase_vectors.py`, ADR-038).
 - `python -m pytest -q`: **165 passed** locally on 2026-11-13 (Python 3.11, FFmpeg 6.1.1, onnxruntime 1.31.1, Linux) —
   collected per file: `test_contract.py` 43, `test_integration.py` 52, `test_unit.py` 59, `test_evals.py` 2,
   `test_release_labels.py` 9.
-- `python evals/run.py` 20/20 measurement evals; `python evals/contract_evals.py` 17/17 contract evals;
+- `python evals/run.py` 21/21 measurement evals; `python evals/contract_evals.py` 17/17 contract evals;
   `python -m pyflakes src tests evals` clean.
 - `.github/workflows/tests.yml` (push to main, every PR), real FFmpeg on every job:
   Ubuntu Python 3.9 (pinned to `ubuntu-24.04`, which still has 3.9), Ubuntu 3.11, Windows 3.11, macOS 3.11. Each job
