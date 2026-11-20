@@ -263,7 +263,7 @@ allowed input root and the index confined to the workspace.
   `tags[]` (both), `name_words[]` (words of the relative path), `analysed_with{kinds, skill_version}`.
 - Measured tags, by fixed rules: orientation (`landscape` / `portrait` / `square`, rotation applied), resolution class
   of the short side (`sd` < 720 ≤ `hd` < 1080 ≤ `fhd` < 1440 ≤ `qhd` < 2160 ≤ `uhd`), frame-rate class (`25fps`,
-  `29.97fps`, ...), video codec, `single-shot` / `multi-shot` / `audio-only`, `has-audio` / `no-audio` /
+  `29.97fps`, `47.952fps`, `119.88fps`, ...: the exact avg_frame_rate, NTSC within 0.005 by velisa/timebase@1), video codec, `single-shot` / `multi-shot` / `audio-only`, `has-audio` / `no-audio` /
   `silent-audio` (integrated loudness below the −70 LUFS gate), duration class (`short` < 5 s ≤ `medium` < 30 s ≤
   `long`), file extension.
 - `--tags`: `{"<relative path>": ["tag", ...]}` or `[{"path", "tags", "source"}]`; tags are lower-cased and trimmed.

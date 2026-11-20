@@ -2,7 +2,7 @@
 
 ```text
 pip install -e ".[vad,events]" pytest
-python -m pytest -q               # 165 tests: unit + contract + integration + evals + release labels
+python -m pytest -q               # 177 tests: unit + contract + integration + evals + release + timebase vectors
 python evals/run.py               # 20 measurement eval cases with expected values and tolerances
 python evals/contract_evals.py    # 17 contract eval cases
 ```
@@ -56,6 +56,13 @@ analyzer declares its own `algorithm_version` · tampered and unreadable cache e
 subprocess) · budget (calls, total seconds, cache hits free) · unsupported analyzer · dry-run runs nothing and still
 validates · path policy (roots, symlink escape, directories, NUL, workspace writes, argv shape) · no shell in source ·
 secret leakage (env value, secret-looking key, child environment) · command / argv leakage · error model.
+
+## Timebase conformance vectors (`tests/test_timebase_vectors.py`, no ffmpeg)
+
+The ecosystem timebase spec's vectors (`velisa/timebase@1`), copied byte for byte from Velisa into
+`tests/fixtures/timebase/` (the Velisa commit and the sha256 are in the test): the 36 vectors of the rate functions this
+Skill has (`parse_rate`, `nominal`, same rate) pass, the other 98 are counted; `fps_class` names all six NTSC rates
+from the exact fraction (ADR-038).
 
 ## Contract tests (`tests/test_contract.py`)
 

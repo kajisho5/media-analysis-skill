@@ -102,6 +102,7 @@ against the code, a command run or the GitHub API on that date; anything that co
 - No other caller found in the sibling checkouts; whether anything outside them calls it is **unverified**.
 
 ## Tests and CI
+- `python -m pytest -q`: **177 passed** locally on 2026-11-20 (with `tests/test_timebase_vectors.py`, ADR-038).
 - `python -m pytest -q`: **165 passed** locally on 2026-11-13 (Python 3.11, FFmpeg 6.1.1, onnxruntime 1.31.1, Linux) —
   collected per file: `test_contract.py` 43, `test_integration.py` 52, `test_unit.py` 59, `test_evals.py` 2,
   `test_release_labels.py` 9.
