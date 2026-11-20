@@ -1,0 +1,16 @@
+{
+  "id": "21_picture_quality_known_construction",
+  "fixture": "picture",
+  "kind": "picture_quality",
+  "derivation": "picture.mp4: one still frame cropped to 640x360; 2-4 s Gaussian blur sigma 4, 4-6 s the crop window jumps up to +-40 / +-25 px every frame, 6-8 s luma x0.25. 1 s windows of 5 sampled frames each; the steady windows have no camera motion, the dark ones a mean luma of about 31",
+  "expect": [
+    {"path": "data.window_count", "value": 8},
+    {"path": "data.windows.0.jitter", "op": "approx", "value": 0.0, "tolerance": 0.1},
+    {"path": "data.windows.0.speed", "op": "approx", "value": 0.0, "tolerance": 0.5},
+    {"path": "data.windows.2.blur", "op": "approx", "value": 14.6, "tolerance": 3.0},
+    {"path": "data.windows.0.blur", "op": "approx", "value": 4.8, "tolerance": 1.5},
+    {"path": "data.windows.4.jitter", "op": "approx", "value": 4.5, "tolerance": 2.0},
+    {"path": "data.windows.7.luma_mean", "op": "approx", "value": 31.3, "tolerance": 5.0},
+    {"path": "data.windows.0.luma_mean", "op": "approx", "value": 126.4, "tolerance": 5.0}
+  ]
+}

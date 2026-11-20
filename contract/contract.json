@@ -14,9 +14,11 @@
     "ffmpeg",
     "ffprobe",
     "filter:astats",
+    "filter:blurdetect",
     "filter:ebur128",
     "filter:edgedetect",
     "filter:scdet",
+    "filter:signalstats",
     "filter:silencedetect"
   ],
   "tools": [
@@ -286,6 +288,87 @@
             "default": 95.0,
             "min": 50.0,
             "max": 100.0
+          }
+        }
+      },
+      "supports": {
+        "timeout": true,
+        "cache": true,
+        "dry_run": true
+      },
+      "provenance": "OBSERVED"
+    },
+    {
+      "tool_id": "media-analysis/picture",
+      "skill_id": "media-analysis",
+      "version": "0.1.23",
+      "algorithm_version": "1",
+      "description": "Picture facts per window, not judged: sharpness (blurdetect), luma mean / 10th / 90th percentile (signalstats), camera jitter and speed from block-median frame shifts",
+      "required_capabilities": [
+        "ffprobe",
+        "ffmpeg",
+        "filter:blurdetect",
+        "filter:signalstats"
+      ],
+      "inputs": [
+        "input"
+      ],
+      "input_type": "media file path (one file per request)",
+      "produces_output": false,
+      "deterministic": true,
+      "writes_media": false,
+      "result_keys": [
+        "observation"
+      ],
+      "kinds": [
+        "picture_quality"
+      ],
+      "output_observation_kinds": [
+        "picture_quality"
+      ],
+      "parameters": {
+        "picture_quality": {
+          "stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "window": {
+            "type": "number",
+            "default": 1.0,
+            "min": 0.1,
+            "max": 60.0
+          },
+          "sample_rate": {
+            "type": "number",
+            "default": 5.0,
+            "min": 0.5,
+            "max": 60.0
+          },
+          "width": {
+            "type": "integer",
+            "default": 640,
+            "min": 64,
+            "max": 3840
+          },
+          "motion_rate": {
+            "type": "number",
+            "default": 10.0,
+            "min": 2.0,
+            "max": 60.0
+          },
+          "motion_width": {
+            "type": "integer",
+            "default": 160,
+            "min": 64,
+            "max": 640
+          },
+          "smooth": {
+            "type": "number",
+            "default": 0.5,
+            "min": 0.2,
+            "max": 10.0
           }
         }
       },
@@ -907,6 +990,12 @@
       "kind": "noise_floor"
     },
     {
+      "id": "measure.video.picture_quality",
+      "lifecycle": "EXPERIMENTAL",
+      "tool_id": "media-analysis/picture",
+      "kind": "picture_quality"
+    },
+    {
       "id": "measure.video.scene_detection",
       "lifecycle": "EXPERIMENTAL",
       "tool_id": "media-analysis/scenes",
@@ -958,7 +1047,8 @@
     "edit_style",
     "speech_regions",
     "audio_events",
-    "highlight_signals"
+    "highlight_signals",
+    "picture_quality"
   ],
   "kind_to_tool": {
     "media_probe": "media-analysis/probe",
@@ -975,7 +1065,8 @@
     "edit_style": "media-analysis/style",
     "speech_regions": "media-analysis/vad",
     "audio_events": "media-analysis/events",
-    "highlight_signals": "media-analysis/signals"
+    "highlight_signals": "media-analysis/signals",
+    "picture_quality": "media-analysis/picture"
   },
   "execution": {
     "mode": "local_subprocess",
@@ -1079,7 +1170,8 @@
             "edit_style",
             "speech_regions",
             "audio_events",
-            "highlight_signals"
+            "highlight_signals",
+            "picture_quality"
           ]
         },
         "parameters": {
@@ -1458,6 +1550,50 @@
             "default": 3,
             "min": 2,
             "max": 1000
+          }
+        },
+        "picture_quality": {
+          "stream": {
+            "type": "integer",
+            "default": 0,
+            "min": 0,
+            "max": 63
+          },
+          "window": {
+            "type": "number",
+            "default": 1.0,
+            "min": 0.1,
+            "max": 60.0
+          },
+          "sample_rate": {
+            "type": "number",
+            "default": 5.0,
+            "min": 0.5,
+            "max": 60.0
+          },
+          "width": {
+            "type": "integer",
+            "default": 640,
+            "min": 64,
+            "max": 3840
+          },
+          "motion_rate": {
+            "type": "number",
+            "default": 10.0,
+            "min": 2.0,
+            "max": 60.0
+          },
+          "motion_width": {
+            "type": "integer",
+            "default": 160,
+            "min": 64,
+            "max": 640
+          },
+          "smooth": {
+            "type": "number",
+            "default": 0.5,
+            "min": 0.2,
+            "max": 10.0
           }
         }
       }

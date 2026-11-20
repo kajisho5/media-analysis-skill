@@ -3,6 +3,7 @@ where a test explicitly uses a fake capability set."""
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -1082,3 +1083,69 @@ def test_energy_peak_time_stays_inside_a_short_last_window():
     d = energy_peaks([-30.0] * 100 + [-10.0] * 10, window=0.5, peak_db=6.0, active_floor_db=-60.0)
     s = d["spans"][0]
     assert (s["start"], s["end"], s["peak_time"]) == (1.0, 1.1, 1.05)
+
+
+# ---- picture_quality (ADR-040)
+def _frame_with_square(w, h, x0, y0, size=12):
+    """A gray frame with a few bright squares on a dark background, every one shifted by (x0, y0)."""
+    buf = bytearray([20] * (w * h))
+    for cx, cy in ((10, 8), (55, 20), (100, 12), (140, 30), (30, 60), (80, 70), (120, 55)):
+        for y in range(cy + y0, cy + y0 + size):
+            for x in range(cx + x0, cx + x0 + size):
+                if 0 <= x < w and 0 <= y < h:
+                    buf[y * w + x] = 220
+    return bytes(buf)
+
+
+def test_frame_shift_finds_a_global_shift_and_none_without_texture():
+    from media_analysis.analyzers.picture import block_profiles, frame_shift
+    w, h = 160, 90
+    a = block_profiles(_frame_with_square(w, h, 0, 0), w, h)
+    b = block_profiles(_frame_with_square(w, h, 3, -2), w, h)
+    dx, dy = frame_shift(a, b, w, h)
+    assert abs(dx - 3) < 0.6 and abs(dy + 2) < 0.6
+    assert frame_shift(a, a, w, h) == (0.0, 0.0)
+    from media_analysis.analyzers.picture import frame_motion
+    assert frame_motion(a, b, w, h)[2] > 0.8                          # every textured block moved the same way
+    flat = block_profiles(bytes([16] * (w * h)), w, h)
+    assert frame_shift(flat, flat, w, h) is None                     # a black frame has no texture: no shift, not 0
+
+
+def test_profile_shift_refines_to_a_sub_sample_shift():
+    from media_analysis.analyzers.picture import profile_shift
+    a = [math.sin(i / 3.0) * 50 for i in range(40)]
+    b = [math.sin((i - 2.5) / 3.0) * 50 for i in range(40)]
+    assert abs(profile_shift(a, b, 8) - 2.5) < 0.3
+
+
+def test_jitter_is_shake_not_a_pan():
+    from media_analysis.analyzers.picture import camera_path, jitter_series
+    pan = camera_path([(2.0, 0.0)] * 30)                               # a steady pan: the path is a line, its moving average lies on it
+    assert max(jitter_series(pan, 2)[3:-3]) < 1e-9
+    shake = camera_path([(4.0 * (-1) ** i, 0.0) for i in range(30)])    # back and forth every frame
+    assert min(jitter_series(shake, 2)[3:-3]) > 0.5
+    assert camera_path([None, (1.0, 1.0)]) == [(0.0, 0.0), (0.0, 0.0), (1.0, 1.0)]
+    line = [(float(i), 0.0) for i in range(10)]                           # a constant pan, right up to the ends
+    j = jitter_series(line, 2)
+    assert j[0] is None and j[-1] is None and max(x for x in j if x is not None) < 1e-9
+    from media_analysis.analyzers.picture import measured_points
+    m = measured_points([None, None, (1.0, 0.0)])                          # no texture for the first two pairs
+    assert m == [False, False, True, True]
+    assert jitter_series(camera_path([None, None, (1.0, 0.0)]), 1, m)[:2] == [None, None]   # unmeasured is None, never 0
+
+
+def test_frame_stats_parse_and_windows():
+    from media_analysis.analyzers.picture import parse_frame_stats, summarize_windows
+    out = "\n".join(["frame:0    pts:0       pts_time:0", "lavfi.blur=5.5", "lavfi.signalstats.YAVG=120.5", "lavfi.signalstats.YLOW=40",
+                     "lavfi.signalstats.YHIGH=200", "frame:1    pts:1       pts_time:0.6", "lavfi.blur=-nan", "lavfi.signalstats.YAVG=16",
+                     "lavfi.signalstats.YLOW=16", "lavfi.signalstats.YHIGH=16", "frame:2    pts:2       pts_time:1.2", "lavfi.blur=9",
+                     "lavfi.signalstats.YAVG=100", "lavfi.signalstats.YLOW=50", "lavfi.signalstats.YHIGH=150"])
+    stats = parse_frame_stats(out)
+    assert [f["blur"] for f in stats] == [5.5, None, 9.0] and stats[1]["luma_mean"] == 16.0
+    win = summarize_windows(1.5, 1.0, stats, [0.0, 0.5, 1.0], [0.0, 1.6, 0.0], [None, 16.0, 16.0], 160, [None, 0.5, 1.0])
+    assert summarize_windows(1.5, 1.0, stats, [0.0, 0.5, 1.0], [None, None, None], [None] * 3, 160)[0]["jitter"] is None
+    assert win[0]["motion_agreement"] == 0.5 and win[1]["motion_agreement"] == 1.0
+    assert [(w_["start"], w_["end"], w_["frames"]) for w_ in win] == [(0.0, 1.0, 2), (1.0, 1.5, 1)]
+    assert win[0]["blur"] == 5.5 and win[0]["luma_mean"] == 68.25 and win[0]["luma_p10"] == 28.0
+    assert win[0]["jitter"] == round(math.sqrt((0 + 1.6 ** 2) / 2) / 160 * 100, 3) and win[0]["speed"] == 10.0
+    assert win[1]["blur"] == 9.0 and win[1]["jitter"] == 0.0

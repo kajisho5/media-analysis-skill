@@ -11,7 +11,8 @@ from .style import StyleAnalyzer
 from .vad import VadAnalyzer
 from .events import EventsAnalyzer
 from .signals import SignalsAnalyzer
+from .picture import PictureAnalyzer
 
 __all__ = ["Analyzer", "AnalysisContext", "ProbeAnalyzer", "StreamAnalyzer", "VideoAnalyzer", "AudioAnalyzer",
            "SilenceAnalyzer", "LoudnessAnalyzer", "IntegrityAnalyzer", "SceneAnalyzer", "TimingAnalyzer", "NoiseAnalyzer",
-           "StyleAnalyzer", "VadAnalyzer", "EventsAnalyzer", "SignalsAnalyzer"]
+           "StyleAnalyzer", "VadAnalyzer", "EventsAnalyzer", "SignalsAnalyzer", "PictureAnalyzer"]
