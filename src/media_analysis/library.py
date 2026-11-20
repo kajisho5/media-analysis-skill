@@ -32,6 +32,7 @@ from . import VERSION
 from .engine import AnalysisEngine
 from .errors import AnalysisError
 from .security import PathPolicy
+from .timebase import RateError, nominal, ntsc_near, parse_rate
 
 INDEX_SCHEMA = "media-analysis/library-index@1"
 MEDIA_EXTENSIONS = (".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi", ".mxf", ".mts", ".m2ts", ".ts", ".mpg", ".mpeg",
@@ -66,13 +67,29 @@ def _orientation(width: Optional[int], height: Optional[int], rotation: Optional
     return "landscape" if width > height else "portrait" if height > width else "square"
 
 
-def _fps_class(fps: Optional[float]) -> Optional[str]:
-    if not fps:
+# The NTSC classes by their usual names (velisa/timebase@1 reads these decimals as base * 1000/1001).
+_NTSC_NAMES = {24: "23.976", 30: "29.97", 48: "47.952", 60: "59.94", 120: "119.88", 240: "239.76"}
+
+
+def _fps_class(fps: Optional[float], avg_frame_rate: Optional[str] = None, r_frame_rate: Optional[str] = None) -> Optional[str]:
+    """The frame-rate class of a stream, on exact fractions (ADR-038): ffprobe's avg_frame_rate (else r_frame_rate,
+    else the float fps) as a fraction; within 0.005 of base * 1000/1001 for base 24, 30, 48, 60, 120 or 240 it is that
+    NTSC class (`29.97fps`, `47.952fps`, `119.88fps`); otherwise the rate rounded half up (`25fps`, `13fps` for 12.5)."""
+    rate = None
+    for value in (avg_frame_rate, r_frame_rate, fps):
+        if value in (None, "", "0/0", 0):
+            continue
+        try:
+            rate = parse_rate(value)
+            break
+        except RateError:
+            continue
+    if rate is None:
         return None
-    for nominal, exact in ((23.976, 24000 / 1001), (29.97, 30000 / 1001), (59.94, 60000 / 1001)):
-        if abs(fps - exact) < 0.01:
-            return f"{nominal:g}fps"
-    return f"{round(fps):d}fps"
+    exact = ntsc_near(rate)
+    if exact.denominator == 1001 and exact.numerator % 1000 == 0 and exact.numerator // 1000 in _NTSC_NAMES:
+        return f"{_NTSC_NAMES[exact.numerator // 1000]}fps"
+    return f"{nominal(rate)}fps"
 
 
 def _duration_class(duration: Optional[float]) -> Optional[str]:
@@ -91,7 +108,7 @@ def describe(probe: Dict[str, Any], scenes: Optional[Dict[str, Any]], loudness: 
         w, h = v.get("width"), v.get("height")
         clip["video"] = {"codec": v.get("codec"), "width": w, "height": h, "fps": v.get("fps"),
                          "orientation": _orientation(w, h, v.get("rotation")), "resolution_class": _resolution_class(w, h),
-                         "fps_class": _fps_class(v.get("fps"))}
+                         "fps_class": _fps_class(v.get("fps"), v.get("avg_frame_rate"), v.get("r_frame_rate"))}
         tags += [x for x in (clip["video"]["orientation"], clip["video"]["resolution_class"], clip["video"]["fps_class"], v.get("codec")) if x]
     else:
         clip["video"] = None

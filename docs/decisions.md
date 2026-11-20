@@ -646,3 +646,22 @@ The release job now commits and tags locally, runs `tests/test_unit.py`, `tests/
 `.github/scripts/release_gate.py` lets a push release only when a pull request merged since the latest tag carries a release-level label or no label at all. The release-level labels are the ones `.github/release-drafter.yml`'s `version-resolver` maps to a bump. A pull request labelled only chore, ci, documentation, docs, test or similar releases nothing. This is imagemagick-skill's rule. release-drafter's `default` accepts only major, minor or patch, so the gate runs first, and the maintenance labels no longer map to a patch.
 
 A version bumped by hand in a pull request is released whatever its labels. The contract is unchanged.
+
+## ADR-038 Frame-rate classes from exact fractions (velisa/timebase@1)
+
+2026-11-20. The ecosystem rule is Velisa ADR-026 (decision D40, spec `velisa/timebase@1`, rule TB-2). Issue #40.
+
+`library._fps_class` named only 23.976, 29.97 and 59.94. It compared the float `fps` with them within 0.01, so 47.952 fps was classed `48fps` and 119.88 fps `120fps`. It rounded every other rate with `round()`, which takes a half to even.
+
+The class is now computed on exact fractions:
+
+- The rate is ffprobe's `avg_frame_rate` as a fraction, which the probe already keeps. When that is missing, it is `r_frame_rate`. When both are missing, it is the float `fps`, read through its shortest text.
+- A rate within 0.005 of base x 1000/1001, for base 24, 30, 48, 60, 120 or 240, is that NTSC class: `23.976fps`, `29.97fps`, `47.952fps`, `59.94fps`, `119.88fps` or `239.76fps`.
+- Any other rate is its nominal rate, rounded half up (`25fps`, and `13fps` for 12.5).
+
+`src/media_analysis/timebase.py` reads a rate by TB-2. An `N/D` is taken as written. A decimal that is not an integer and lies within 0.005 of an NTSC rate is that rate. It never uses `limit_denominator`.
+
+`tests/fixtures/timebase/timebase-vectors.json` is a byte-for-byte copy of Velisa's `docs/specs/timebase-vectors.json` at Velisa commit `b7df1d82586f0b7c00fed4074aecac75cbadf893`. `.gitattributes` keeps it LF on Windows. `tests/test_timebase_vectors.py` checks its sha256 and runs the 36 rate vectors.
+
+Only the measured `fps_class` tag changes, for 47.952 / 119.88 / 239.76 fps streams and for half-way non-NTSC rates. The contract and the cache's algorithm versions are unchanged: the tag is derived when the library index is written. It is not an analyzer's Observation.
+An index written before this change keeps a clip's old tag until that file changes and is measured again, as for any other measured tag.
