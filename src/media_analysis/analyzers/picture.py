@@ -131,16 +131,28 @@ def camera_path(shifts: Sequence[Optional[Tuple[float, float]]]) -> List[Tuple[f
     return path
 
 
-def jitter_series(path: Sequence[Tuple[float, float]], half: int) -> List[float]:
-    """Distance of each point of the path from its centred moving average (window 2 * half + 1, shrunk at the ends)."""
-    out = []
+def jitter_series(path: Sequence[Tuple[float, float]], half: int, measured: Optional[Sequence[bool]] = None) -> List[Optional[float]]:
+    """Distance of each point of the path from its centred moving average (window 2 * half + 1). Near the ends the window shrinks
+    symmetrically, so a steady pan stays on its own average; the two end points have no support on one side and give None. A point no
+    measured frame pair touches (`measured` False: no texture on either side) gives None too, never 0."""
+    out: List[Optional[float]] = []
     n = len(path)
     for i in range(n):
-        lo, hi = max(0, i - half), min(n, i + half + 1)
+        hw = min(half, i, n - 1 - i)
+        if hw <= 0 or (measured is not None and not measured[i]):
+            out.append(None)
+            continue
+        lo, hi = i - hw, i + hw + 1
         mx = sum(p[0] for p in path[lo:hi]) / (hi - lo)
         my = sum(p[1] for p in path[lo:hi]) / (hi - lo)
         out.append(math.hypot(path[i][0] - mx, path[i][1] - my))
     return out
+
+
+def measured_points(shifts: Sequence[Optional[Tuple[float, float]]]) -> List[bool]:
+    """Per point of the camera path (one more than the shifts): whether a measured frame pair ends or starts at it."""
+    n = len(shifts) + 1
+    return [(i > 0 and shifts[i - 1] is not None) or (i < n - 1 and shifts[i] is not None) for i in range(n)]
 
 
 def _r(v: Optional[float], nd: int = 3) -> Optional[float]:
@@ -148,20 +160,36 @@ def _r(v: Optional[float], nd: int = 3) -> Optional[float]:
 
 
 def summarize_windows(duration: float, window: float, stats: List[Dict[str, Optional[float]]], motion_times: List[float],
-                      jitter: List[float], speed: List[Optional[float]], width: int,
+                      jitter: List[Optional[float]], speed: List[Optional[float]], width: int,
                       agreement: Optional[List[Optional[float]]] = None) -> List[Dict[str, Any]]:
-    """One record per window [k * window, (k + 1) * window) clipped to the duration: the medians / means of the frames in it."""
+    """One record per window [k * window, (k + 1) * window) clipped to the duration: the medians / means of the frames in it. Each sample is
+    put in its window once (linear in the number of samples); a window with nothing measured has None."""
     n = max(1, int(math.ceil(duration / window - 1e-9))) if duration > 0 else 0
+    frames_in: List[List[Dict[str, Optional[float]]]] = [[] for _ in range(n)]
+    points_in: List[List[int]] = [[] for _ in range(n)]
+
+    def bucket(t: float) -> Optional[int]:
+        if t < 0 or t >= duration:
+            return None
+        return min(n - 1, int(t // window))
+    for f in stats:
+        k_ = bucket(float(f["time"]))
+        if k_ is not None:
+            frames_in[k_].append(f)
+    for i, t in enumerate(motion_times):
+        k_ = bucket(t)
+        if k_ is not None:
+            points_in[k_].append(i)
     out = []
     for k in range(n):
         s, e = k * window, min(duration, (k + 1) * window)
-        fr = [f for f in stats if s <= f["time"] < e]
+        fr = frames_in[k]
         blur = [f["blur"] for f in fr if f["blur"] is not None]
         lm = [f["luma_mean"] for f in fr if f["luma_mean"] is not None]
         lo = [f["luma_p10"] for f in fr if f["luma_p10"] is not None]
         hi = [f["luma_p90"] for f in fr if f["luma_p90"] is not None]
-        idx = [i for i, t in enumerate(motion_times) if s <= t < e]
-        jit = [jitter[i] for i in idx if i < len(jitter)]
+        idx = points_in[k]
+        jit = [jitter[i] for i in idx if i < len(jitter) and jitter[i] is not None]
         spd = [speed[i] for i in idx if i < len(speed) and speed[i] is not None]
         agr = [agreement[i] for i in idx if agreement is not None and i < len(agreement) and agreement[i] is not None]
         out.append({"start": round(s, 3), "end": round(e, 3), "frames": len(fr),
@@ -206,7 +234,8 @@ class PictureAnalyzer(Analyzer):
         stats = parse_frame_stats(r.stdout)
         # 2. camera motion from small gray frames
         w = int(p["motion_width"]) // 2 * 2
-        h = max(BLOCKS[1] * 2, int(round(w * (s.get("height") or 9) / (s.get("width") or 16))) // 2 * 2)
+        vinfo = s.get("video") or {}
+        h = max(BLOCKS[1] * 2, int(round(w * (vinfo.get("height") or 9) / (vinfo.get("width") or 16))) // 2 * 2)
         profiles: List[List[Tuple[List[float], List[float]]]] = []
         shifts: List[Optional[Tuple[float, float]]] = []
         agree: List[Optional[float]] = [None]
@@ -230,12 +259,13 @@ class PictureAnalyzer(Analyzer):
         rate = float(p["motion_rate"])
         path = camera_path(shifts)
         half = max(1, int(round(float(p["smooth"]) * rate / 2)))
-        jitter = jitter_series(path, half)
+        measured = measured_points(shifts)
+        jitter = jitter_series(path, half, measured)
         speed: List[Optional[float]] = [None] + [None if sh is None else math.hypot(*sh) * rate for sh in shifts]
         times = [i / rate for i in range(len(path))]
         windows = summarize_windows(float(duration), float(p["window"]), stats, times, jitter, speed, w, agree)
         blur_all = [f["blur"] for f in stats if f["blur"] is not None]
-        jit_all = jitter
+        jit_all = [j for j in jitter if j is not None]
         return {"stream_index": s["index"], "stream_ordinal": p["stream"], "duration": duration,
                 "method": {"sharpness": f"ffmpeg blurdetect, median per window, frames scaled to {p['width']} px wide (higher is blurrier)",
                            "exposure": "ffmpeg signalstats YAVG (mean) / YLOW (10th percentile) / YHIGH (90th percentile), 8-bit luma codes",
@@ -244,11 +274,11 @@ class PictureAnalyzer(Analyzer):
                                      "speed = mean shift per second, both in percent of the frame width; motion_agreement = mean share of textured blocks within "
                                      f"{AGREE_PX:g} px of the median shift (low: the blocks moved differently, the median need not be the camera)"},
                 "parameters": {k: p[k] for k in ("window", "sample_rate", "width", "motion_rate", "motion_width", "smooth")},
-                "sampled_frames": len(stats), "motion_frames": len(path) if profiles else 0,
+                "sampled_frames": len(stats), "motion_frames": sum(1 for m_ in measured if m_) if profiles else 0,
                 "windows": windows, "window_count": len(windows),
                 "summary": {"blur_median": _r(statistics.median(blur_all)) if blur_all else None,
                             "luma_mean": _r(sum(f["luma_mean"] for f in stats if f["luma_mean"] is not None) / max(1, sum(1 for f in stats if f["luma_mean"] is not None)), 2)
                             if any(f["luma_mean"] is not None for f in stats) else None,
-                            "jitter": _r(math.sqrt(sum(j * j for j in jit_all) / len(jit_all)) / w * 100.0) if len(jit_all) > 1 else None,
+                            "jitter": _r(math.sqrt(sum(j * j for j in jit_all) / len(jit_all)) / w * 100.0) if jit_all else None,
                             "frames_without_edges": sum(1 for f in stats if f["blur"] is None),
                             "frame_pairs_without_texture": sum(1 for sh in shifts if sh is None)}}

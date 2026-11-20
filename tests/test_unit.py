@@ -1125,6 +1125,13 @@ def test_jitter_is_shake_not_a_pan():
     shake = camera_path([(4.0 * (-1) ** i, 0.0) for i in range(30)])    # back and forth every frame
     assert min(jitter_series(shake, 2)[3:-3]) > 0.5
     assert camera_path([None, (1.0, 1.0)]) == [(0.0, 0.0), (0.0, 0.0), (1.0, 1.0)]
+    line = [(float(i), 0.0) for i in range(10)]                           # a constant pan, right up to the ends
+    j = jitter_series(line, 2)
+    assert j[0] is None and j[-1] is None and max(x for x in j if x is not None) < 1e-9
+    from media_analysis.analyzers.picture import measured_points
+    m = measured_points([None, None, (1.0, 0.0)])                          # no texture for the first two pairs
+    assert m == [False, False, True, True]
+    assert jitter_series(camera_path([None, None, (1.0, 0.0)]), 1, m)[:2] == [None, None]   # unmeasured is None, never 0
 
 
 def test_frame_stats_parse_and_windows():
@@ -1136,6 +1143,7 @@ def test_frame_stats_parse_and_windows():
     stats = parse_frame_stats(out)
     assert [f["blur"] for f in stats] == [5.5, None, 9.0] and stats[1]["luma_mean"] == 16.0
     win = summarize_windows(1.5, 1.0, stats, [0.0, 0.5, 1.0], [0.0, 1.6, 0.0], [None, 16.0, 16.0], 160, [None, 0.5, 1.0])
+    assert summarize_windows(1.5, 1.0, stats, [0.0, 0.5, 1.0], [None, None, None], [None] * 3, 160)[0]["jitter"] is None
     assert win[0]["motion_agreement"] == 0.5 and win[1]["motion_agreement"] == 1.0
     assert [(w_["start"], w_["end"], w_["frames"]) for w_ in win] == [(0.0, 1.0, 2), (1.0, 1.5, 1)]
     assert win[0]["blur"] == 5.5 and win[0]["luma_mean"] == 68.25 and win[0]["luma_p10"] == 28.0

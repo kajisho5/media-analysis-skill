@@ -196,7 +196,8 @@ seconds (default 1.0, the last one clipped to the duration), never a verdict.
   up to 12 % of the width and refined to a sub-pixel shift, and the median over the textured blocks is the frame's
   shift, so a subject crossing part of the frame is not camera motion. `jitter` is the RMS distance of the camera path
   (the running sum of the shifts) from its centred moving average over `smooth` (0.5 s), in percent of the width. It
-  measures shake, not a pan. `speed` is the mean shift per second in percent of the width. `motion_agreement` is the
+  measures shake, not a pan. Near the ends the average shrinks symmetrically, and the first and last points are left out. A
+  window where no frame pair had texture has `null`, never 0. `speed` is the mean shift per second in percent of the width. `motion_agreement` is the
   mean share of the textured blocks whose shift is within 1 px of the median. When it is low, the blocks moved
   differently: a subject covering most of the frame, or no single motion. The median then need not be the camera's,
   and a caller should not read the jitter as shake.
