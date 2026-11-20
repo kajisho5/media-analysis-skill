@@ -151,8 +151,10 @@ def file_version(path=VERSION_FILE):
             text = fh.read()
     except FileNotFoundError:
         return None
-    m = re.search(r"(?ms)^\[project\]\s*$(.*?)(?=^\[|\Z)", text)
-    found = re.search(r"""(?m)^[ \t]*version[ \t]*=[ \t]*['"]([^'"]+)['"]""", m.group(1) if m else text)
+    m = re.search(r"(?ms)^[ \t]*\[[ \t]*project[ \t]*\][ \t]*(?:#[^\n]*)?$(.*?)(?=^[ \t]*\[|\Z)", text)
+    if not m:
+        return None  # never a version from another table
+    found = re.search(r"""(?m)^[ \t]*version[ \t]*=[ \t]*['"]([^'"]+)['"]""", m.group(1))
     return found.group(1) if found else None
 
 
@@ -332,6 +334,15 @@ def _wait_for_contract_diff(repo, sha, appear=120, finish=1500, every=15):
         time.sleep(every)
 
 
+def _on_base(base, path):
+    """True when `path` exists on the base branch (the checkout has every branch: fetch-depth 0)."""
+    try:
+        _git("cat-file", "-e", f"origin/{base}:{path}")
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
 def check_pr(number, head_sha=None):
     """The pull request check (major-label-check.yml): 0 when the pull request may merge, 1 when it may not."""
     repo = os.environ.get("GITHUB_REPOSITORY")
@@ -347,6 +358,10 @@ def check_pr(number, head_sha=None):
     waited = None
     if head_sha:
         waited = _wait_for_contract_diff(repo, head_sha)
+        base = os.environ.get("GITHUB_BASE_REF") or "main"
+        if waited == "absent" and _on_base(base, f".github/workflows/{CONTRACT_DIFF_WORKFLOW}"):
+            print(f"::error::this pull request removes {CONTRACT_DIFF_WORKFLOW}, which {base} has, so it is not classified")
+            return 1
         if waited == "absent":
             print(f"no {CONTRACT_DIFF_WORKFLOW} here: the labels are read as they are")
         elif waited != "ok":

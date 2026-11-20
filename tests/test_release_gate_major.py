@@ -181,6 +181,12 @@ class ManualModeTests(unittest.TestCase):
             fh.write('[build-system]\nrequires = []\n\n[project]\nname = "x"\n  version = "1.1.0"\n\n[tool.x]\nversion = "9"\n')
         try:
             self.assertEqual(self.gate.file_version(fh.name), "1.1.0")
+            with open(fh.name, "w", encoding="utf-8") as out:
+                out.write('[tool.example]\nversion = "2.0.0"\n\n[project] # metadata\nname = "x"\nversion = "1.0.0"\n')
+            self.assertEqual(self.gate.file_version(fh.name), "1.0.0")
+            with open(fh.name, "w", encoding="utf-8") as out:
+                out.write('[tool.example]\nversion = "2.0.0"\n')
+            self.assertIsNone(self.gate.file_version(fh.name))     # never another table's version
         finally:
             os.unlink(fh.name)
 
@@ -258,8 +264,18 @@ class WaitForContractDiffTests(unittest.TestCase):
             with self.mock.patch.object(gate, "_wait_for_contract_diff", lambda repo, sha: "ok"):
                 self.assertEqual(gate.check_pr(5, "a" * 40), 0)
             with self.mock.patch.object(gate, "_gh_json", lambda path: [{"name": "contract:breaking"}]), \
+                    self.mock.patch.object(gate, "_on_base", lambda base, path: False), \
                     self.mock.patch.object(gate, "_wait_for_contract_diff", lambda repo, sha: "absent"):
                 self.assertEqual(gate.check_pr(5, "a" * 40), 1)
+            # the pull request removes contract-diff.yml that the base branch has: not classified, fails
+            with self.mock.patch.object(gate, "_gh_json", lambda path: [{"name": "fix"}]), \
+                    self.mock.patch.object(gate, "_on_base", lambda base, path: True), \
+                    self.mock.patch.object(gate, "_wait_for_contract_diff", lambda repo, sha: "absent"):
+                self.assertEqual(gate.check_pr(5, "a" * 40), 1)
+            with self.mock.patch.object(gate, "_gh_json", lambda path: [{"name": "fix"}]), \
+                    self.mock.patch.object(gate, "_on_base", lambda base, path: False), \
+                    self.mock.patch.object(gate, "_wait_for_contract_diff", lambda repo, sha: "absent"):
+                self.assertEqual(gate.check_pr(5, "a" * 40), 0)
         self.assertIn("::error::the newest run ended cancelled", out.getvalue())
 
     def test_check_pr_on_0x_passes_without_waiting(self):
