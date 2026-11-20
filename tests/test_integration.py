@@ -854,7 +854,7 @@ def test_picture_quality_on_known_construction(media, tmp_path):
     soft = [w[i]["blur"] for i in (2, 3)]
     assert min(soft) > 2 * max(sharp)                                   # blurdetect: higher is blurrier
     assert all(w[i]["jitter"] < 0.1 and w[i]["speed"] < 0.5 for i in (0, 1, 7))   # still frame: no camera motion
-    assert all(w[i]["jitter"] > 2.0 for i in (4, 5))                     # the crop jumps up to 40 px of 640: shake
+    assert all(w[i]["jitter"] > 2.0 and w[i]["motion_agreement"] > 0.6 for i in (4, 5))   # the crop jumps up to 40 px of 640: shake, every block agrees
     assert all(115 < w[i]["luma_mean"] < 135 for i in range(6)) and all(25 < w[i]["luma_mean"] < 38 for i in (6, 7))
     assert w[7]["luma_p90"] < 60 < w[0]["luma_p90"]
     assert d["summary"]["frames_without_edges"] == 0

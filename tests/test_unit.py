@@ -1105,6 +1105,8 @@ def test_frame_shift_finds_a_global_shift_and_none_without_texture():
     dx, dy = frame_shift(a, b, w, h)
     assert abs(dx - 3) < 0.6 and abs(dy + 2) < 0.6
     assert frame_shift(a, a, w, h) == (0.0, 0.0)
+    from media_analysis.analyzers.picture import frame_motion
+    assert frame_motion(a, b, w, h)[2] > 0.8                          # every textured block moved the same way
     flat = block_profiles(bytes([16] * (w * h)), w, h)
     assert frame_shift(flat, flat, w, h) is None                     # a black frame has no texture: no shift, not 0
 
@@ -1133,7 +1135,8 @@ def test_frame_stats_parse_and_windows():
                      "lavfi.signalstats.YAVG=100", "lavfi.signalstats.YLOW=50", "lavfi.signalstats.YHIGH=150"])
     stats = parse_frame_stats(out)
     assert [f["blur"] for f in stats] == [5.5, None, 9.0] and stats[1]["luma_mean"] == 16.0
-    win = summarize_windows(1.5, 1.0, stats, [0.0, 0.5, 1.0], [0.0, 1.6, 0.0], [None, 16.0, 16.0], 160)
+    win = summarize_windows(1.5, 1.0, stats, [0.0, 0.5, 1.0], [0.0, 1.6, 0.0], [None, 16.0, 16.0], 160, [None, 0.5, 1.0])
+    assert win[0]["motion_agreement"] == 0.5 and win[1]["motion_agreement"] == 1.0
     assert [(w_["start"], w_["end"], w_["frames"]) for w_ in win] == [(0.0, 1.0, 2), (1.0, 1.5, 1)]
     assert win[0]["blur"] == 5.5 and win[0]["luma_mean"] == 68.25 and win[0]["luma_p10"] == 28.0
     assert win[0]["jitter"] == round(math.sqrt((0 + 1.6 ** 2) / 2) / 160 * 100, 3) and win[0]["speed"] == 10.0

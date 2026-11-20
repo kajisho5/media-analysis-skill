@@ -687,7 +687,10 @@ The release step now installs `-e ".[vad,events]" pytest`, the same as `tests.ym
   - `jitter`, `speed`: camera motion from 160 px gray frames at 10 fps. Block-median projection shifts (4 × 3 blocks,
     profiles matched by mean absolute difference up to 12 % of the width, sub-pixel by a parabola) give the camera path.
     `jitter` is the RMS distance from its 0.5 s centred moving average (shake, not a pan), and `speed` is the mean shift
-    per second, both in percent of the width.
+    per second, both in percent of the width. `motion_agreement` is the share of textured blocks within 1 px of the
+    median shift. The median is not proof of camera motion: a subject covering most blocks moves it. So the agreement
+    is reported for the caller to weigh (0.82–0.86 on the shaky crop, 1.0 when still, 0.66–0.73 on testsrc2's moving
+    parts).
   - No threshold, no verdict. Whether a window is soft, dark or shaky is the caller's decision.
 - Why these methods: they use the engine's own filters and the standard library only, so the core install measures
   them. Projection profiles make global motion cheap enough for pure Python: about 0.2 s per 10 s of video at the

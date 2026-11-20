@@ -183,7 +183,7 @@ method` (ADR-036).
 ## `picture_quality` (parameters `stream, window, sample_rate, width, motion_rate, motion_width, smooth`)
 
 `stream_index, stream_ordinal, duration, method{sharpness, exposure, motion}, parameters, sampled_frames, motion_frames,
-windows[{start, end, frames, blur, luma_mean, luma_p10, luma_p90, jitter, speed}], window_count, summary{blur_median,
+windows[{start, end, frames, blur, luma_mean, luma_p10, luma_p90, jitter, speed, motion_agreement}], window_count, summary{blur_median,
 luma_mean, jitter, frames_without_edges, frame_pairs_without_texture}` (ADR-040). No model; facts per window of `window`
 seconds (default 1.0, the last one clipped to the duration), never a verdict.
 
@@ -196,7 +196,10 @@ seconds (default 1.0, the last one clipped to the duration), never a verdict.
   up to 12 % of the width and refined to a sub-pixel shift, and the median over the textured blocks is the frame's
   shift, so a subject crossing part of the frame is not camera motion. `jitter` is the RMS distance of the camera path
   (the running sum of the shifts) from its centred moving average over `smooth` (0.5 s), in percent of the width. It
-  measures shake, not a pan. `speed` is the mean shift per second in percent of the width.
+  measures shake, not a pan. `speed` is the mean shift per second in percent of the width. `motion_agreement` is the
+  mean share of the textured blocks whose shift is within 1 px of the median. When it is low, the blocks moved
+  differently: a subject covering most of the frame, or no single motion. The median then need not be the camera's,
+  and a caller should not read the jitter as shake.
 - Measured, not judged: what counts as soft, dark or shaky is the caller's decision (the agent's selects rule, Velisa
   ADR-033).
 

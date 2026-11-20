@@ -7,7 +7,8 @@
   frame is split into 4 x 3 blocks; the column and row projection profiles of each block are matched (mean absolute
   difference, shifts up to 12 % of the width, refined to a sub-pixel shift by a parabola through the best three), and the
   median over the blocks with texture is the frame's shift, so a subject moving through part of the frame is not camera
-  motion. The camera path is the running sum of the shifts; jitter is the RMS distance between the path and its centred
+  motion as long as most blocks show the background. `motion_agreement` (the share of textured blocks within 1 px of the median)
+  says how far the blocks agreed: when a subject covers most of the frame the median can follow it. The camera path is the running sum of the shifts; jitter is the RMS distance between the path and its centred
   moving average over `smooth` seconds (shake, not a pan), speed the mean shift per second; both in percent of the width.
 
 No threshold is applied: whether a window is soft, dark or shaky is the caller's decision."""
@@ -25,6 +26,7 @@ from .base import PROBE_OP, AnalysisContext, Analyzer
 
 BLOCKS = (4, 3)               # columns x rows of the motion grid
 MAX_SHIFT = 0.12              # search range, a fraction of the width (and of the height, vertically)
+AGREE_PX = 1.0               # a block agrees with the frame's shift when its own shift is within this many pixels of it
 MIN_TEXTURE = 1.0             # mean absolute deviation of a block profile (8-bit codes) below which the block has no texture
 
 _FRAME = re.compile(r"^frame:(\d+)\s+pts:(-?\d+)\s+pts_time:(-?[0-9.]+)")
@@ -96,15 +98,26 @@ def profile_shift(a: Sequence[float], b: Sequence[float], max_shift: int) -> flo
     return float(best)
 
 
-def frame_shift(p: List[Tuple[List[float], List[float]]], q: List[Tuple[List[float], List[float]]], w: int, h: int) -> Optional[Tuple[float, float]]:
-    """The global (dx, dy) in pixels between two frames: the median of the textured blocks' shifts; None when no block has texture."""
+def frame_motion(p: List[Tuple[List[float], List[float]]], q: List[Tuple[List[float], List[float]]], w: int, h: int) -> Optional[Tuple[float, float, float]]:
+    """The global (dx, dy) in pixels between two frames, the median of the textured blocks' shifts, and the agreement: the share of those
+    blocks whose shift is within AGREE_PX of the median (the mean over both axes). None when no block has texture. A low agreement says the
+    blocks moved differently (a subject crossing much of the frame, or no single motion), so the median need not be the camera's."""
     sx = max(1, int(round(MAX_SHIFT * w)))
     sy = max(1, int(round(MAX_SHIFT * h)))
     xs = [profile_shift(a[0], b[0], sx) for a, b in zip(p, q) if texture(a[0]) >= MIN_TEXTURE and texture(b[0]) >= MIN_TEXTURE]
     ys = [profile_shift(a[1], b[1], sy) for a, b in zip(p, q) if texture(a[1]) >= MIN_TEXTURE and texture(b[1]) >= MIN_TEXTURE]
     if not xs and not ys:
         return None
-    return (statistics.median(xs) if xs else 0.0, statistics.median(ys) if ys else 0.0)
+    mx = statistics.median(xs) if xs else 0.0
+    my = statistics.median(ys) if ys else 0.0
+    shares = [sum(1 for v in vs if abs(v - m) <= AGREE_PX) / len(vs) for vs, m in ((xs, mx), (ys, my)) if vs]
+    return (mx, my, sum(shares) / len(shares))
+
+
+def frame_shift(p: List[Tuple[List[float], List[float]]], q: List[Tuple[List[float], List[float]]], w: int, h: int) -> Optional[Tuple[float, float]]:
+    """The global (dx, dy) in pixels between two frames (see frame_motion); None when no block has texture."""
+    m = frame_motion(p, q, w, h)
+    return None if m is None else (m[0], m[1])
 
 
 def camera_path(shifts: Sequence[Optional[Tuple[float, float]]]) -> List[Tuple[float, float]]:
@@ -135,7 +148,8 @@ def _r(v: Optional[float], nd: int = 3) -> Optional[float]:
 
 
 def summarize_windows(duration: float, window: float, stats: List[Dict[str, Optional[float]]], motion_times: List[float],
-                      jitter: List[float], speed: List[Optional[float]], width: int) -> List[Dict[str, Any]]:
+                      jitter: List[float], speed: List[Optional[float]], width: int,
+                      agreement: Optional[List[Optional[float]]] = None) -> List[Dict[str, Any]]:
     """One record per window [k * window, (k + 1) * window) clipped to the duration: the medians / means of the frames in it."""
     n = max(1, int(math.ceil(duration / window - 1e-9))) if duration > 0 else 0
     out = []
@@ -149,13 +163,15 @@ def summarize_windows(duration: float, window: float, stats: List[Dict[str, Opti
         idx = [i for i, t in enumerate(motion_times) if s <= t < e]
         jit = [jitter[i] for i in idx if i < len(jitter)]
         spd = [speed[i] for i in idx if i < len(speed) and speed[i] is not None]
+        agr = [agreement[i] for i in idx if agreement is not None and i < len(agreement) and agreement[i] is not None]
         out.append({"start": round(s, 3), "end": round(e, 3), "frames": len(fr),
                     "blur": _r(statistics.median(blur)) if blur else None,
                     "luma_mean": _r(sum(lm) / len(lm), 2) if lm else None,
                     "luma_p10": _r(statistics.median(lo), 1) if lo else None,
                     "luma_p90": _r(statistics.median(hi), 1) if hi else None,
                     "jitter": _r(math.sqrt(sum(j * j for j in jit) / len(jit)) / width * 100.0) if jit else None,
-                    "speed": _r(sum(spd) / len(spd) / width * 100.0, 2) if spd else None})
+                    "speed": _r(sum(spd) / len(spd) / width * 100.0, 2) if spd else None,
+                    "motion_agreement": _r(sum(agr) / len(agr), 2) if agr else None})
     return out
 
 
@@ -193,11 +209,14 @@ class PictureAnalyzer(Analyzer):
         h = max(BLOCKS[1] * 2, int(round(w * (s.get("height") or 9) / (s.get("width") or 16))) // 2 * 2)
         profiles: List[List[Tuple[List[float], List[float]]]] = []
         shifts: List[Optional[Tuple[float, float]]] = []
+        agree: List[Optional[float]] = [None]
 
         def on_frame(buf: bytes) -> None:
             prof = block_profiles(buf, w, h)
             if profiles:
-                shifts.append(frame_shift(profiles[-1], prof, w, h))
+                m = frame_motion(profiles[-1], prof, w, h)
+                shifts.append(None if m is None else (m[0], m[1]))
+                agree.append(None if m is None else m[2])
                 profiles[-1] = prof
             else:
                 profiles.append(prof)
@@ -214,7 +233,7 @@ class PictureAnalyzer(Analyzer):
         jitter = jitter_series(path, half)
         speed: List[Optional[float]] = [None] + [None if sh is None else math.hypot(*sh) * rate for sh in shifts]
         times = [i / rate for i in range(len(path))]
-        windows = summarize_windows(float(duration), float(p["window"]), stats, times, jitter, speed, w)
+        windows = summarize_windows(float(duration), float(p["window"]), stats, times, jitter, speed, w, agree)
         blur_all = [f["blur"] for f in stats if f["blur"] is not None]
         jit_all = jitter
         return {"stream_index": s["index"], "stream_ordinal": p["stream"], "duration": duration,
@@ -222,7 +241,8 @@ class PictureAnalyzer(Analyzer):
                            "exposure": "ffmpeg signalstats YAVG (mean) / YLOW (10th percentile) / YHIGH (90th percentile), 8-bit luma codes",
                            "motion": f"block-median projection shift of {BLOCKS[0]}x{BLOCKS[1]} blocks between frames at {rate:g} fps, {w}x{h}; "
                                      f"jitter = RMS distance of the camera path from its {float(p['smooth']):g} s centred moving average, "
-                                     "speed = mean shift per second, both in percent of the frame width"},
+                                     "speed = mean shift per second, both in percent of the frame width; motion_agreement = mean share of textured blocks within "
+                                     f"{AGREE_PX:g} px of the median shift (low: the blocks moved differently, the median need not be the camera)"},
                 "parameters": {k: p[k] for k in ("window", "sample_rate", "width", "motion_rate", "motion_width", "smooth")},
                 "sampled_frames": len(stats), "motion_frames": len(path) if profiles else 0,
                 "windows": windows, "window_count": len(windows),
