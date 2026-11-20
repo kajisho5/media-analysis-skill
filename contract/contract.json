@@ -3,7 +3,7 @@
   "skill_id": "media-analysis",
   "name": "media-analysis",
   "package": "media-analysis-skill",
-  "version": "0.1.22",
+  "version": "0.1.23",
   "description": "Deterministic media observation / analysis. Measures facts about media files; never interprets, decides or edits.",
   "role": "observation / analysis",
   "repository": "kajisho5/media-analysis-skill",
@@ -23,7 +23,7 @@
     {
       "tool_id": "media-analysis/audio",
       "skill_id": "media-analysis",
-      "version": "0.1.22",
+      "version": "0.1.23",
       "algorithm_version": "1",
       "description": "Audio format of one audio stream (sample rate, channels, layout, codec, sample format, bitrate)",
       "required_capabilities": [
@@ -65,7 +65,7 @@
     {
       "tool_id": "media-analysis/events",
       "skill_id": "media-analysis",
-      "version": "0.1.22",
+      "version": "0.1.23",
       "algorithm_version": "1",
       "description": "Applause and laughter spans of one audio stream from an audio-event classifier (optional extra 'events'; UNKNOWN without it): time ranges with a score",
       "required_capabilities": [
@@ -144,7 +144,7 @@
     {
       "tool_id": "media-analysis/integrity",
       "skill_id": "media-analysis",
-      "version": "0.1.22",
+      "version": "0.1.23",
       "algorithm_version": "1",
       "description": "Full decode with error counting, per-stream frame counts and timestamp monotonicity; PASS / WARN / FAIL",
       "required_capabilities": [
@@ -187,7 +187,7 @@
     {
       "tool_id": "media-analysis/loudness",
       "skill_id": "media-analysis",
-      "version": "0.1.22",
+      "version": "0.1.23",
       "algorithm_version": "1",
       "description": "EBU R128 integrated loudness, loudness range and true peak of one audio stream",
       "required_capabilities": [
@@ -231,7 +231,7 @@
     {
       "tool_id": "media-analysis/noise",
       "skill_id": "media-analysis",
-      "version": "0.1.22",
+      "version": "0.1.23",
       "algorithm_version": "1",
       "description": "Noise floor, signal level and no-reference SNR estimate of one audio stream (or one channel) from short-window RMS",
       "required_capabilities": [
@@ -299,7 +299,7 @@
     {
       "tool_id": "media-analysis/probe",
       "skill_id": "media-analysis",
-      "version": "0.1.22",
+      "version": "0.1.23",
       "algorithm_version": "1",
       "description": "Container and primary stream facts (format, duration, size, bitrate, video/audio summary)",
       "required_capabilities": [
@@ -334,7 +334,7 @@
     {
       "tool_id": "media-analysis/scenes",
       "skill_id": "media-analysis",
-      "version": "0.1.22",
+      "version": "0.1.23",
       "algorithm_version": "2",
       "description": "Deterministic visual scene-cut detection (scdet score), not semantic scene understanding",
       "required_capabilities": [
@@ -390,7 +390,7 @@
     {
       "tool_id": "media-analysis/signals",
       "skill_id": "media-analysis",
-      "version": "0.1.22",
+      "version": "0.1.23",
       "algorithm_version": "1",
       "description": "Highlight signals measured, not judged: speech-energy peaks, speaking-rate changes and screen-change bursts, each as time ranges with a score",
       "required_capabilities": [
@@ -501,7 +501,7 @@
     {
       "tool_id": "media-analysis/silence",
       "skill_id": "media-analysis",
-      "version": "0.1.22",
+      "version": "0.1.23",
       "algorithm_version": "1",
       "description": "Silence segments of one audio stream with leading / internal / trailing classification",
       "required_capabilities": [
@@ -563,7 +563,7 @@
     {
       "tool_id": "media-analysis/streams",
       "skill_id": "media-analysis",
-      "version": "0.1.22",
+      "version": "0.1.23",
       "algorithm_version": "1",
       "description": "Every stream with index, type, codec, language, disposition, dimensions, rate, channels",
       "required_capabilities": [
@@ -598,7 +598,7 @@
     {
       "tool_id": "media-analysis/style",
       "skill_id": "media-analysis",
-      "version": "0.1.22",
+      "version": "0.1.23",
       "algorithm_version": "2",
       "description": "Editing-style profile: cut rate and shot-length distribution, soft and burned-in subtitle frequency / coverage / position, loudness and silence share",
       "required_capabilities": [
@@ -681,7 +681,7 @@
     {
       "tool_id": "media-analysis/timing",
       "skill_id": "media-analysis",
-      "version": "0.1.22",
+      "version": "0.1.23",
       "algorithm_version": "2",
       "description": "Duration and timing facts: start times, per-stream durations, A/V duration mismatch and start offset, timestamp discontinuities",
       "required_capabilities": [
@@ -738,7 +738,7 @@
     {
       "tool_id": "media-analysis/vad",
       "skill_id": "media-analysis",
-      "version": "0.1.22",
+      "version": "0.1.23",
       "algorithm_version": "1",
       "description": "Speech regions of one audio stream from a voice-activity model (optional extra 'vad'; UNKNOWN without it): time ranges with probability, speech share, longest pause",
       "required_capabilities": [
@@ -811,7 +811,7 @@
     {
       "tool_id": "media-analysis/video",
       "skill_id": "media-analysis",
-      "version": "0.1.22",
+      "version": "0.1.23",
       "algorithm_version": "1",
       "description": "Video format of one video stream (resolution, fps, frame count, pixel format, colour, SAR/DAR, CFR/VFR)",
       "required_capabilities": [

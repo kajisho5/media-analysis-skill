@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.23 - 2026-11-20
+
+- ci(release): install the optional extras in the release test step, as tests.yml does (ADR-039) (#42) (1e4772e)
+- fix(library): frame-rate classes from exact fractions; all six NTSC rates by velisa/timebase@1 (#40) (#41) (b8ad487)
+- ci: Velisa's reusable changelog-check/release-guard; dependencies PRs release a patch (D36, D37) (#39) (7b9f3d2)
+- ci(release): test the release commit before pushing; no release for chore/ci/docs-only changes (#38) (f9c5847)
+
 ## v0.1.22 - 2026-11-19
 
 - ci(release): resolve the release root once; refuse a committed contract without its generator (#36) (0840dbe)
