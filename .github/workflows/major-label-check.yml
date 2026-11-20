@@ -1,0 +1,43 @@
+name: Major label check
+
+# Velisa ADR-031 section 5 (decision D46): from a Skill's 1.0.0, a change that `si contract-diff` calls breaking
+# ships only in a major release. So, once the latest release tag is 1.0.0 or later, a pull request labelled
+# `contract:breaking` fails here until it carries a label release-drafter.yml maps to a major bump (`major`), or
+# bumps the major version in pyproject.toml itself. Before 1.0.0 it always passes (a breaking change there needs
+# only a minor bump, ADR-020). The release job applies the same rule (.github/scripts/release_gate.py).
+#
+# contract-diff labels the pull request with GITHUB_TOKEN, and a label set that way starts no workflow. So on
+# opened / synchronize / reopened this waits for that commit's contract-diff run, then reads the labels as they
+# are; a label a person adds or removes (labeled / unlabeled) runs it again. Identical in every repository that
+# has release_gate.py.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  actions: read # contract-diff's runs on this commit
+  contents: read
+  issues: read # the pull request's labels
+  pull-requests: read
+
+# A newer event on the same pull request cancels the older run, so the newest labels decide.
+concurrency:
+  group: major-label-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  major-label-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the release tags
+
+      - name: A contract:breaking pull request on 1.x needs a major label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 .github/scripts/release_gate.py --check-pr "$PR_NUMBER" --head-sha "$HEAD_SHA"
