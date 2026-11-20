@@ -113,37 +113,34 @@ class ReleaseStopsTests(unittest.TestCase):
     def test_main_stops_the_release_and_says_why(self):
         import contextlib
         import io
-        import tempfile
         gate = self.gate
-        saved = (gate._git, gate._merged_pull_labels, gate.file_version, os.environ.get("GITHUB_REPOSITORY"))
+        saved = (gate._git, gate._merged_pull_labels, gate.file_version, gate._write, os.environ.get("GITHUB_REPOSITORY"))
+        written = []
         gate._git = lambda *args: "abc fix: drop a field (#9)\n"
         gate._merged_pull_labels = lambda repo, sha: [["contract:breaking"]]
         gate.file_version = lambda path=None: "1.0.0"
+        gate._write = lambda github_output, releasable: written.append(releasable)
         os.environ["GITHUB_REPOSITORY"] = "owner/repo"
         try:
-            with tempfile.TemporaryDirectory() as tmp:
-                out = os.path.join(tmp, "out")
-                buf = io.StringIO()
-                with contextlib.redirect_stdout(buf):
-                    code = gate.main(["--since", "v1.0.0", "--github-output", out])
-                self.assertEqual(code, 1)
-                self.assertEqual(_read(out), "releasable=false\n")
-                self.assertIn("::error::contract:breaking", buf.getvalue())
-                self.assertIn("ADR-031", buf.getvalue())
-                gate._merged_pull_labels = lambda repo, sha: [["contract:breaking", "major"]]
-                with contextlib.redirect_stdout(io.StringIO()):
-                    self.assertEqual(gate.main(["--since", "v1.0.0", "--github-output", out]), 0)
-                self.assertTrue(_read(out).endswith("releasable=true\n"))
-                gate._merged_pull_labels = lambda repo, sha: [["contract:breaking"]]
-                with contextlib.redirect_stdout(io.StringIO()):
-                    self.assertEqual(gate.main(["--since", "v0.9.0", "--github-output", out]), 0)
-                self.assertTrue(_read(out).endswith("releasable=true\n"))
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                code = gate.main(["--since", "v1.0.0", "--github-output", "unused"])
+            self.assertEqual((code, written), (1, [False]))
+            self.assertIn("::error::contract:breaking", buf.getvalue())
+            self.assertIn("ADR-031", buf.getvalue())
+            gate._merged_pull_labels = lambda repo, sha: [["contract:breaking", "major"]]
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(gate.main(["--since", "v1.0.0", "--github-output", "unused"]), 0)
+            gate._merged_pull_labels = lambda repo, sha: [["contract:breaking"]]
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(gate.main(["--since", "v0.9.0", "--github-output", "unused"]), 0)
+            self.assertEqual(written, [False, True, True])
         finally:
-            gate._git, gate._merged_pull_labels, gate.file_version = saved[:3]
-            if saved[3] is None:
+            gate._git, gate._merged_pull_labels, gate.file_version, gate._write = saved[:4]
+            if saved[4] is None:
                 os.environ.pop("GITHUB_REPOSITORY", None)
             else:
-                os.environ["GITHUB_REPOSITORY"] = saved[3]
+                os.environ["GITHUB_REPOSITORY"] = saved[4]
 
 
 class PullRequestCheckTests(unittest.TestCase):
