@@ -134,13 +134,125 @@ class ReleaseStopsTests(unittest.TestCase):
             gate._merged_pull_labels = lambda repo, sha: [["contract:breaking"]]
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(gate.main(["--since", "v0.9.0", "--github-output", "unused"]), 0)
-            self.assertEqual(written, [False, True, True])
+            # bumped by hand to a build of the same version: manual mode, not a major release, even with `major`
+            gate._merged_pull_labels = lambda repo, sha: [["contract:breaking", "major"]]
+            gate.file_version = lambda path=None: "1.0.0+build.1"
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(gate.main(["--since", "v1.0.0", "--github-output", "unused"]), 1)
+            self.assertEqual(written, [False, True, True, False])
         finally:
             gate._git, gate._merged_pull_labels, gate.file_version, gate._write = saved[:4]
             if saved[4] is None:
                 os.environ.pop("GITHUB_REPOSITORY", None)
             else:
                 os.environ["GITHUB_REPOSITORY"] = saved[4]
+
+
+class ManualModeTests(unittest.TestCase):
+    """Manual mode is chosen as release.yml chooses it: the whole version string differs from the tag's."""
+
+    def setUp(self):
+        self.gate = _load_gate()
+
+    def test_whole_strings_are_compared(self):
+        self.assertFalse(self.gate.bumped_by_hand("1.2.3", "v1.2.3"))
+        self.assertTrue(self.gate.bumped_by_hand("1.2.3+build.1", "v1.2.3"))
+        self.assertTrue(self.gate.bumped_by_hand("1.3.0", "v1.2.3"))
+        self.assertFalse(self.gate.bumped_by_hand(None, "v1.2.3"))
+        self.assertFalse(self.gate.bumped_by_hand("1.2.3", ""))
+
+    def test_a_build_suffix_is_not_a_major_release(self):
+        self.assertFalse(self.gate.pr_verdict(["contract:breaking", "major"], "v1.2.3", "1.2.3+build.1", MAJOR)[0])
+        self.assertTrue(self.gate.pr_verdict(["contract:breaking", "major"], "v1.2.3", "1.2.3", MAJOR)[0])
+
+
+class _Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+class WaitForContractDiffTests(unittest.TestCase):
+    """The pull request check reads the labels only after this commit's contract-diff run succeeded."""
+
+    def setUp(self):
+        from unittest import mock
+        self.gate = _load_gate()
+        self.mock = mock
+        for patcher in (mock.patch.object(self.gate.os.path, "exists", return_value=True),
+                        mock.patch.object(self.gate, "time", _Clock())):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _wait(self, *responses):
+        replies = list(responses)
+        seen = []
+
+        def gh_json(path):
+            seen.append(path)
+            return {"workflow_runs": replies.pop(0) if len(replies) > 1 else replies[0]}
+
+        with self.mock.patch.object(self.gate, "_gh_json", gh_json):
+            result = self.gate._wait_for_contract_diff("owner/repo", "a" * 40)
+        self.assertTrue(all("event=pull_request" in path for path in seen))
+        return result
+
+    def test_the_newest_run_decides(self):
+        old = {"id": 1, "created_at": "2026-01-01T00:00:00Z", "status": "completed", "conclusion": "cancelled"}
+        new = {"id": 2, "created_at": "2026-01-01T00:01:00Z", "status": "completed", "conclusion": "success"}
+        self.assertEqual(self._wait([new, old]), "ok")
+        self.assertIn("cancelled", self._wait([dict(new, conclusion="cancelled"), dict(old, conclusion="success")]))
+        self.assertIn("failure", self._wait([dict(new, conclusion="failure")]))
+
+    def test_it_waits_for_a_run_in_progress(self):
+        running = {"id": 2, "created_at": "2026-01-01T00:01:00Z", "status": "in_progress", "conclusion": None}
+        self.assertEqual(self._wait([running], [dict(running, status="completed", conclusion="success")]), "ok")
+
+    def test_no_run_or_a_time_out_is_not_a_pass(self):
+        self.assertIn("no contract-diff run", self._wait([]))
+        running = {"id": 2, "created_at": "2026-01-01T00:01:00Z", "status": "queued", "conclusion": None}
+        self.assertIn("has not finished", self._wait([running]))
+
+    def test_check_pr_fails_when_the_label_is_not_known_on_1x(self):
+        import contextlib
+        import io
+        gate = self.gate
+        patches = [self.mock.patch.object(gate, "_git", lambda *args: "v1.0.0\nv0.9.0\n"),
+                   self.mock.patch.object(gate, "file_version", lambda path=None: "1.0.0"),
+                   self.mock.patch.object(gate, "_gh_json", lambda path: [{"name": "contract:none"}]),
+                   self.mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "owner/repo"})]
+        for patcher in patches:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            with self.mock.patch.object(gate, "_wait_for_contract_diff", lambda repo, sha: "the newest run ended cancelled"):
+                self.assertEqual(gate.check_pr(5, "a" * 40), 1)
+            with self.mock.patch.object(gate, "_wait_for_contract_diff", lambda repo, sha: "ok"):
+                self.assertEqual(gate.check_pr(5, "a" * 40), 0)
+            with self.mock.patch.object(gate, "_gh_json", lambda path: [{"name": "contract:breaking"}]), \
+                    self.mock.patch.object(gate, "_wait_for_contract_diff", lambda repo, sha: "absent"):
+                self.assertEqual(gate.check_pr(5, "a" * 40), 1)
+        self.assertIn("::error::the newest run ended cancelled", out.getvalue())
+
+    def test_check_pr_on_0x_passes_without_waiting(self):
+        import contextlib
+        import io
+        gate = self.gate
+
+        def never(*args):
+            raise AssertionError("0.x reads nothing from GitHub")
+
+        with self.mock.patch.object(gate, "_git", lambda *args: "v0.4.4\n"), \
+                self.mock.patch.object(gate, "_gh_json", never), \
+                self.mock.patch.object(gate, "_wait_for_contract_diff", never), \
+                self.mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "owner/repo"}), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.check_pr(5, "a" * 40), 0)
 
 
 class PullRequestCheckTests(unittest.TestCase):

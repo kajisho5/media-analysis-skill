@@ -8,8 +8,8 @@ name: Major label check
 #
 # contract-diff labels the pull request with GITHUB_TOKEN, and a label set that way starts no workflow. So on
 # opened / synchronize / reopened this waits for that commit's contract-diff run, then reads the labels as they
-# are; a label a person adds or removes (labeled / unlabeled) runs it again. Identical in every repository that
-# has release_gate.py.
+# are; it fails if that run did not succeed. A label a person adds or removes (labeled / unlabeled) runs it again.
+# Identical in every repository that has release_gate.py.
 
 on:
   pull_request:
