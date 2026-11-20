@@ -68,6 +68,21 @@ class ReleaseWorkflowOrderTests(unittest.TestCase):
         for push in pushes:
             self.assertLess(test_step, push)
 
+    def test_the_release_commit_is_tested_with_the_extras_ci_installs(self):
+        # ADR-039: the release test step installs what tests.yml's test job installs, so a test that CI runs with an
+        # optional extra (numpy, onnxruntime) is not run without it on the release commit.
+        def installed_extras(text):
+            m = re.search(r"pip install (?:-q )?-e \"?\.(?:\[([^\]]*)\])?\"?", text)
+            self.assertIsNotNone(m, "no editable install of the package")
+            return sorted(x.strip() for x in (m.group(1) or "").split(",") if x.strip())
+
+        release = _read(".github", "workflows", "release.yml")
+        step = release[release.index("- name: Test the release commit before pushing it"):]
+        step = step[:step.index("- name:", 1)]
+        ci = installed_extras(_read(".github", "workflows", "tests.yml"))
+        self.assertTrue(ci)
+        self.assertEqual(installed_extras(step), ci)
+
 
 if __name__ == "__main__":
     unittest.main()

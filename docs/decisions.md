@@ -665,3 +665,11 @@ The class is now computed on exact fractions:
 
 Only the measured `fps_class` tag changes, for 47.952 / 119.88 / 239.76 fps streams and for half-way non-NTSC rates. The contract and the cache's algorithm versions are unchanged: the tag is derived when the library index is written. It is not an analyzer's Observation.
 An index written before this change keeps a clip's old tag until that file changes and is measured again, as for any other measured tag.
+
+## ADR-039 The release test step installs what CI's test job installs
+
+2026-11-20. Amends ADR-037.
+
+The first release after ADR-037 (the merge of #41) stopped at "Test the release commit before pushing it": `tests/test_unit.py::test_audio_event_score_is_any_of_the_classes` imports numpy, and the step installed only `-e . pytest`. The test dates from v0.1.18 (ADR-036) and the runner image did not change; the step was new in ADR-037 and no release had run it until then. The test job in `tests.yml` installs the optional extras `[vad,events]` so that these kinds are measured, and the test runs there with numpy.
+
+The release step now installs `-e ".[vad,events]" pytest`, the same as `tests.yml`. The test is not skipped and not changed. `tests/test_release_gate.py` checks that the two installs name the same extras, so they cannot drift apart again. The contract is unchanged.
