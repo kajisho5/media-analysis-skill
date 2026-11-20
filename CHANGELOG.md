@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.0 - 2026-11-20
+
+- feat: picture_quality: per-window sharpness, exposure and camera jitter, measured not judged (ADR-040) (#47) (05478eb)
+- ci: a contract:breaking pull request on 1.x needs the major label (Velisa ADR-031 section 5) (#44) (de79478)
+- ci: release gate leaves contract:* labels out of the count (#43) (95c46ad)
+
 ## v0.1.23 - 2026-11-20
 
 - ci(release): install the optional extras in the release test step, as tests.yml does (ADR-039) (#42) (1e4772e)
