@@ -3,7 +3,7 @@
 ```text
 pip install -e ".[vad,events]" pytest
 python -m pytest -q               # 217 tests: unit + contract + integration + evals + release + timebase vectors
-python evals/run.py               # 20 measurement eval cases with expected values and tolerances
+python evals/run.py               # 21 measurement eval cases with expected values and tolerances
 python evals/contract_evals.py    # 17 contract eval cases
 ```
 
