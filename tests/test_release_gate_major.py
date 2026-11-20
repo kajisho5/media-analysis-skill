@@ -89,12 +89,20 @@ class ReleaseStopsTests(unittest.TestCase):
     def test_a_major_release_goes(self):
         labelled = [("feat!: x (#9)", [["contract:breaking", "major"]])]
         self.assertEqual(self.gate.major_blockers(labelled, "v1.0.0", MAJOR), [])
-        # another merged pull request carries major: release-drafter resolves a major release
-        other = [("fix: x (#9)", [["contract:breaking"]]), ("feat!: y (#10)", [["major"]])]
-        self.assertEqual(self.gate.major_blockers(other, "v1.0.0", MAJOR), [])
         # version bumped by hand to the next major
         self.assertEqual(self.gate.major_blockers([("fix: x (#9)", [["contract:breaking"]])], "v1.4.0", MAJOR,
                                                   new_version="2.0.0"), [])
+
+    def test_each_breaking_pull_request_needs_its_own_major_label(self):
+        # as on the pull request itself; a major label elsewhere could also sit on a pull request release-drafter skips
+        other = [("fix: x (#9)", [["contract:breaking"]]), ("feat!: y (#10)", [["major", "skip-changelog"]])]
+        self.assertEqual(len(self.gate.major_blockers(other, "v1.0.0", MAJOR)), 1)
+
+    def test_an_unreadable_version_file_is_not_auto_mode(self):
+        commits = [("fix: x (#9)", [["contract:breaking", "major"]])]
+        reasons = self.gate.major_blockers(commits, "v1.0.0", MAJOR, new_version="")
+        self.assertEqual(len(reasons), 1)
+        self.assertIn("cannot be read", reasons[0])
 
     def test_a_version_bumped_by_hand_within_the_major_stops(self):
         commits = [("fix: x (#9)", [["contract:breaking", "major"]])]
@@ -158,8 +166,23 @@ class ManualModeTests(unittest.TestCase):
         self.assertFalse(self.gate.bumped_by_hand("1.2.3", "v1.2.3"))
         self.assertTrue(self.gate.bumped_by_hand("1.2.3+build.1", "v1.2.3"))
         self.assertTrue(self.gate.bumped_by_hand("1.3.0", "v1.2.3"))
-        self.assertFalse(self.gate.bumped_by_hand(None, "v1.2.3"))
+        self.assertTrue(self.gate.bumped_by_hand(None, "v1.2.3"))   # unreadable is not "unchanged"
+        self.assertTrue(self.gate.bumped_by_hand("1.2.3", "v1.2.3-rc.1"))
         self.assertFalse(self.gate.bumped_by_hand("1.2.3", ""))
+
+    def test_an_unreadable_version_fails_a_breaking_pull_request(self):
+        ok, message = self.gate.pr_verdict(["contract:breaking", "major"], "v1.2.3", None, MAJOR)
+        self.assertFalse(ok)
+        self.assertIn("cannot be read", message)
+
+    def test_an_indented_version_key_is_read(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False, encoding="utf-8") as fh:
+            fh.write('[build-system]\nrequires = []\n\n[project]\nname = "x"\n  version = "1.1.0"\n\n[tool.x]\nversion = "9"\n')
+        try:
+            self.assertEqual(self.gate.file_version(fh.name), "1.1.0")
+        finally:
+            os.unlink(fh.name)
 
     def test_a_build_suffix_is_not_a_major_release(self):
         self.assertFalse(self.gate.pr_verdict(["contract:breaking", "major"], "v1.2.3", "1.2.3+build.1", MAJOR)[0])
@@ -272,6 +295,15 @@ class PullRequestCheckTests(unittest.TestCase):
 
     def test_a_hand_bumped_minor_fails_even_with_major(self):
         self.assertFalse(self.gate.pr_verdict(["contract:breaking", "major"], "v1.2.0", "1.3.0", MAJOR)[0])
+
+    def test_no_contract_label_after_contract_diff_ran_fails(self):
+        # a fork's token cannot label: the pull request is not classified
+        ok, message = self.gate.pr_verdict(["fix"], "v1.0.0", "1.0.0", MAJOR, need_contract_label=True)
+        self.assertFalse(ok)
+        self.assertIn("contract:none", message)
+        self.assertTrue(self.gate.pr_verdict(["fix", "contract:none"], "v1.0.0", "1.0.0", MAJOR, need_contract_label=True)[0])
+        self.assertTrue(self.gate.pr_verdict(["fix"], "v1.0.0", "1.0.0", MAJOR)[0])     # no contract-diff here
+        self.assertTrue(self.gate.pr_verdict(["fix"], "v0.3.0", "0.3.0", MAJOR, need_contract_label=True)[0])
 
     def test_0x_and_non_breaking_pass(self):
         self.assertTrue(self.gate.pr_verdict(["contract:breaking"], "v0.2.7", "0.2.7", MAJOR)[0])
