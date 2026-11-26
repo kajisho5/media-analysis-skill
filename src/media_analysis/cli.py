@@ -182,6 +182,20 @@ def build_parser() -> argparse.ArgumentParser:
     hl.add_argument("--allowed-input", action="append", help="restrict inputs to this root (repeatable)")
     _add_common(hl)
 
+    fw = sub.add_parser("follow", help="measure a file still being written: only the part since the last run, appended to a state file (ADR-041)")
+    fw.add_argument("input", help="the recording (Matroska / WebM, MPEG-TS or fragmented MP4 / MOV while it grows)")
+    fw.add_argument("--kind", required=True, choices=["silence", "scene_detection"], help="kind measured incrementally")
+    fw.add_argument("--state", required=True, help="state file to create or continue (inside the workspace)")
+    fw.add_argument("--param", action="append", metavar="KEY=VALUE", help="parameter of the kind (JSON value), repeatable")
+    fw.add_argument("--settle", type=float, default=30.0, help="seconds of unchanged size and mtime after which the file counts as complete (default 30)")
+    fw.add_argument("--guard", type=float, default=2.0, help="seconds at the end of what is on disk that the next run measures again (default 2)")
+    fw.add_argument("--final", action="store_true", help="the recording has ended: measure to the end and complete the result")
+    fw.add_argument("--complete-marker", help="a file whose existence means the recording has ended")
+    fw.add_argument("--timeout", type=float, help="seconds per ffmpeg run (default 600)")
+    fw.add_argument("--workspace", help="directory writes are confined to (default: current directory)")
+    fw.add_argument("--allowed-input", action="append", help="restrict inputs to this root (repeatable)")
+    _add_common(fw)
+
     k = sub.add_parser("conformance", help="run AI-video-production-OS SKILL_SPEC.md section 8 self-checks against this installation")
     _add_common(k)
     return ap
@@ -498,6 +512,24 @@ def _library(args: argparse.Namespace, as_json: bool) -> int:
     return 0
 
 
+def _follow(args: argparse.Namespace, as_json: bool) -> int:
+    from .incremental import follow
+    try:
+        policy = PathPolicy(workspace=args.workspace, allowed_input_roots=args.allowed_input)
+        doc = follow(args.input, args.kind, _params(args.param), args.state, caps=detect(), policy=policy, timeout=args.timeout or 600.0,
+                     settle=args.settle, guard=args.guard, final=args.final, complete_marker=args.complete_marker)
+    except AnalysisError as e:
+        return _fail(e, as_json)
+    if as_json:
+        emit_json(doc)
+    elif not doc["readable"]:
+        print(f"{doc['input']}: not readable yet ({doc['unreadable']['reason']}); {doc['unreadable']['hint']}")
+    else:
+        state = "complete" if doc["complete"] else "growing"
+        print(f"{doc['kind']} on {doc['input']} ({state}): committed to {doc['committed_until']:.3f} s after {doc['run_count']} runs")
+    return 0
+
+
 def _highlights(args: argparse.Namespace, as_json: bool) -> int:
     from .highlights import highlight_candidates
     try:
@@ -540,6 +572,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return _library(args, as_json)
     if args.cmd == "highlights":
         return _highlights(args, as_json)
+    if args.cmd == "follow":
+        return _follow(args, as_json)
     try:
         engine = _engine(args)
         document = _document(args)

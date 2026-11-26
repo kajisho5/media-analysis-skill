@@ -2,7 +2,7 @@
 
 ```text
 pip install -e ".[vad,events]" pytest
-python -m pytest -q               # 217 tests: unit + contract + integration + evals + release + timebase vectors
+python -m pytest -q               # 229 tests: unit + contract + integration + evals + release + timebase vectors
 python evals/run.py               # 21 measurement eval cases with expected values and tolerances
 python evals/contract_evals.py    # 17 contract eval cases
 ```
@@ -106,6 +106,16 @@ timeout inside a batch keeps the protocol (partial response, others served, no c
 audio kinds on video-only and video kinds on audio-only media, second pass served from cache except the
 never-cached errors · determinism across two processes · **non-ASCII (Japanese) file name over cp1252 / cp932 / ascii pipes**: JSON
 protocol, human mode, stdin request and error documents all survive.
+
+## Incremental measurement (`tests/test_incremental.py`, real ffmpeg)
+
+ffmpeg writes a 40 s recording (a cut every 3 s, a 2 s pause every 7 s) to a pipe; the test appends it to the file in
+three bursts and runs `follow` after each: **the completing run's data equals one analyzer run on the final file** for
+`silence` and `scene_detection` in Matroska, MPEG-TS and fragmented MP4, and each run starts where the last one
+committed · events committed mid-recording · a plain MP4 is `readable: false` until it is closed · completion by the
+settle window (injected clock) and by a marker file; an unchanged complete file is not measured again · a shortened
+file starts again · refusals (kind not incremental, state of other parameters, state outside the workspace) · CLI
+(ADR-041).
 
 ## Contract evals (`evals/contract_evals.py`, `tests/test_evals.py`)
 

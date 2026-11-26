@@ -63,6 +63,14 @@ the caller (this Skill holds no model); ADR-031.
 with a score and reasons (energy lift, applause / laughter spans the caller passes, keyword density, speaker changes).
 It never cuts; ADR-032.
 
+`media-analysis follow rec.mkv --kind silence --state rec.silence.json --json` measures a recording that is still
+being written. Run it again as the file grows: each run measures only the new part and appends it to the state file,
+with `growing: true` and `data.duration: null` until the file is complete. The file is complete with `--final`, when
+`--complete-marker <file>` exists, or when its size has not changed for `--settle` seconds (default 30). The completing
+run's `data` equals one `silence` / `scene_detection` run on the final file. Only `silence` and `scene_detection` can be
+followed. A plain MP4 / MOV answers `readable: false` until it is closed (its index is written last). Matroska, MPEG-TS
+and fragmented MP4 can be read while they grow (ADR-041).
+
 Unknown kinds, unknown parameters, out-of-range values and any `command` / `argv` field are rejected with `INVALID_INPUT`.
 
 ## AnalysisRequest (structured input)

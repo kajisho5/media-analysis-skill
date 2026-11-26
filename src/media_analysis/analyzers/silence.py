@@ -58,13 +58,19 @@ class SilenceAnalyzer(Analyzer):
         r = run_argv(argv, ctx.timeout)
         if r.returncode != 0:
             raise AnalysisError("ANALYSIS_FAILED", "silencedetect failed", {"stderr_tail": "\n".join(r.stderr.strip().splitlines()[-5:])})
-        segs = classify(parse_silencedetect(r.stderr), duration, parameters["edge_tolerance"])
-        total = sum(x["duration"] for x in segs if x["duration"] is not None)
-        return {
-            "stream_index": s["index"], "stream_ordinal": parameters["stream"], "duration": duration,
-            "threshold_db": parameters["threshold_db"], "min_duration": parameters["min_duration"], "edge_tolerance": parameters["edge_tolerance"],
-            "segments": segs, "segment_count": len(segs), "silent_seconds": round(total, 3),
-            "leading": next((x for x in segs if x["type"] in ("leading", "entire")), None),
-            "trailing": next((x for x in reversed(segs) if x["type"] in ("trailing", "entire")), None),
-            "entirely_silent": len(segs) == 1 and segs[0]["type"] == "entire",
-        }
+        return silence_data(s, duration, parameters, parse_silencedetect(r.stderr))
+
+
+def silence_data(stream: Dict[str, Any], duration: Optional[float], parameters: Dict[str, Any],
+                 pairs: List[Tuple[float, Optional[float]]]) -> Dict[str, Any]:
+    """The `silence` data from measured (start, end) pairs; shared with the incremental run on a growing file (ADR-041)."""
+    segs = classify(pairs, duration, parameters["edge_tolerance"])
+    total = sum(x["duration"] for x in segs if x["duration"] is not None)
+    return {
+        "stream_index": stream["index"], "stream_ordinal": parameters["stream"], "duration": duration,
+        "threshold_db": parameters["threshold_db"], "min_duration": parameters["min_duration"], "edge_tolerance": parameters["edge_tolerance"],
+        "segments": segs, "segment_count": len(segs), "silent_seconds": round(total, 3),
+        "leading": next((x for x in segs if x["type"] in ("leading", "entire")), None),
+        "trailing": next((x for x in reversed(segs) if x["type"] in ("trailing", "entire")), None),
+        "entirely_silent": len(segs) == 1 and segs[0]["type"] == "entire",
+    }
