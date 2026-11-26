@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.1 - 2026-11-26
+
+- fix: burned-in sampling counts whole intervals, so ffmpeg 9.1 and 6.1 agree on a clip shorter than the interval (#49) (3d400d1)
+
 ## v0.2.0 - 2026-11-20
 
 - feat: picture_quality: per-window sharpness, exposure and camera jitter, measured not judged (ADR-040) (#47) (05478eb)
