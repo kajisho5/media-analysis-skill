@@ -87,11 +87,61 @@ def test_appended_twice_equals_one_run_on_the_final_file(fmt, kind, recordings, 
     assert final["data"] == _full(target, kind)
     runs = json.loads((tmp_path / "state.json").read_text())["runs"]
     assert len(runs) == len(readable) + 1
-    for a, b in zip(runs, runs[1:]):   # each run starts where the last one committed, minus two frames (4 s more where MPEG-TS seeks late)
-        assert b["from"] >= a["committed_until"] - (4.2 if fmt == "ts" else 0.2), runs
+    # each run starts where the last one committed, minus two frames (scenes) or min_duration (silence), 4 s more where MPEG-TS seeks late
+    slack = (0.6 if kind == "silence" else 0.2) + (4.0 if fmt == "ts" else 0.0)
+    for a, b in zip(runs, runs[1:]):
+        assert b["from"] >= a["committed_until"] - slack, runs
     assert runs[-1]["from"] > 0, runs
     measured = sum(r["to"] - r["from"] for r in runs)
     assert measured < 1.5 * DURATION, runs                # from the start each time would be about twice the duration
+
+
+def _grow_and_follow(data: bytes, target: Path, kind: str, policy: PathPolicy, cuts, **kw):
+    docs = []
+    target.write_bytes(b"")
+    prev = 0
+    for i, c in enumerate(cuts):
+        with open(target, "ab") as fh:
+            fh.write(data[prev:c])
+        prev = c
+        docs.append(follow(str(target), kind, {}, "state.json", caps=caps(), policy=policy, final=(i == len(cuts) - 1), **kw))
+    return docs
+
+
+def test_continuous_sound_advances_the_cursor(tmp_path):
+    """No silence at all: each run still starts near where the last one stopped, not from 0."""
+    p = subprocess.run(["ffmpeg", "-hide_banner", "-nostdin", "-v", "error", "-f", "lavfi", "-i", f"sine=f=440:r=16000:d={DURATION}",
+                        "-c:a", "aac", "-f", "matroska", "pipe:1"], capture_output=True, check=True)
+    data = p.stdout
+    policy = PathPolicy(workspace=str(tmp_path))
+    target = tmp_path / "tone.mkv"
+    docs = _grow_and_follow(data, target, "silence", policy, [len(data) // 3, 2 * len(data) // 3, len(data)])
+    runs = json.loads((tmp_path / "state.json").read_text())["runs"]
+    assert docs[0]["committed_until"] > 5 and runs[1]["from"] >= runs[0]["committed_until"] - 1.0 and runs[2]["from"] > runs[1]["from"], runs
+    assert docs[-1]["data"] == _full(target, "silence") and docs[-1]["data"]["segment_count"] == 0
+
+
+def test_a_silence_closed_by_the_end_of_the_bytes_stays_pending_with_no_guard(recordings, tmp_path):
+    """guard 0: ffmpeg closes a silence that is still running at the end of what is on disk; it is not a finished silence."""
+    data = recordings["mkv"]
+    policy = PathPolicy(workspace=str(tmp_path))
+    probe_file = tmp_path / "probe.mkv"
+    cut = None
+    for k in range(10, 90):                       # a prefix that ends inside a pause (pauses run 5-7 s, 12-14 s, ... )
+        size = len(data) * k // 100
+        probe_file.write_bytes(data[:size])
+        d = follow(str(probe_file), "silence", {}, f"p{k}.json", caps=caps(), policy=policy, guard=0.0)
+        end = d["run"]["to"] if d["readable"] else 0
+        if end > 3 and 5.6 < (end % 7.0) < 6.6:
+            cut = size
+            break
+    assert cut, "no prefix ended inside a pause"
+    target = tmp_path / "rec.mkv"
+    docs = _grow_and_follow(data, target, "silence", policy, [cut, len(data)], guard=0.0)
+    first = docs[0]
+    assert all(s["end"] is not None and s["end"] < first["run"]["to"] - 0.5 for s in first["data"]["segments"]), first["data"]["segments"]
+    assert first["committed_until"] < first["run"]["to"] - 0.5     # the open pause is measured again next time
+    assert docs[-1]["data"] == _full(target, "silence")
 
 
 def test_events_committed_while_growing_are_kept(recordings, tmp_path):

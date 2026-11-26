@@ -520,6 +520,8 @@ def _follow(args: argparse.Namespace, as_json: bool) -> int:
                      settle=args.settle, guard=args.guard, final=args.final, complete_marker=args.complete_marker)
     except AnalysisError as e:
         return _fail(e, as_json)
+    except OSError as e:      # a state path that cannot be written (a file where its folder should be, no permission): still one JSON document
+        return _fail(AnalysisError("PATH_NOT_ALLOWED", f"cannot write {args.state}: {e}", {"state": args.state}), as_json)
     if as_json:
         emit_json(doc)
     elif not doc["readable"]:

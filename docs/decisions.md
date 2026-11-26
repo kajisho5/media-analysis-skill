@@ -720,9 +720,11 @@ The release step now installs `-e ".[vad,events]" pytest`, the same as `tests.ym
   (`committed.pairs` / `committed.cuts` and one entry per run under `runs`), and leaves the unfinished tail for the next
   run. Nothing is cached in the Observation cache: the state file is the incremental result.
   - What is committed: everything up to `guard` seconds (default 2) before the last decoded sample or frame, except an
-    event still open there. `silence` commits up to the end of its last finished silence, or up to the first sample of a
-    silence that has started but not ended. Both are samples where silencedetect's count of silent samples is reset, so
-    a run that starts there is in the state a full run is in. `scene_detection` commits frames. A resumed run starts two
+    event still open there. `silence` commits up to that point, or up to the first sample of a silence that has started
+    but not ended (also one ffmpeg closed only because the bytes ended). A resumed silence run starts `min_duration`
+    before the committed point. Any silent stretch still open there started less than `min_duration` before it, since a
+    longer one was reported and is pending. So the run counts it in full and is in the state a full run is in.
+    Continuous sound with no silence still moves the point forward. `scene_detection` commits frames. A resumed run starts two
     frames before the next uncommitted frame, because scdet's score uses the frame before and the previous frame's
     difference. Frame numbers are re-aligned on the pts of that anchor frame.
   - Timestamps: `-copyts -start_at_zero` with `-ss` before `-i`, so a resumed run prints the times a full run prints,
@@ -737,6 +739,8 @@ The release step now installs `-e ".[vad,events]" pytest`, the same as `tests.ym
     comes from the analyzer's own `silence_data` / `scene_data` with the final file's duration. A later run on the
     unchanged file returns the stored result and measures nothing. While the file grows, `data.duration` is `null` and a
     scene still running has `end: null`.
+  - A file that grows while the completing run reads it is not completed: that run is measured again as an ordinary one
+    (`completion.changed_during_run`), so the probe's duration and the decoded range always describe the same bytes.
   - Replacement: a file shorter than at the last run, or whose 64 KiB around the middle of what the last run saw
     differs, is measured again from the start (`restarted` says why). Muxers rewrite headers at the start and add an
     index at the end when they close a file; they do not touch the middle.
@@ -757,5 +761,6 @@ The release step now installs `-e ".[vad,events]" pytest`, the same as `tests.ym
   shape of the existing kinds, and no tool, kind or parameter was added. `runner.ffmpeg_null_argv` gained
   `input_options` (built by this package, never from a request).
 - Verification: `tests/test_incremental.py`, which covers: appended twice equals one run (2 kinds × 3 containers),
-  events committed mid-recording, a plain MP4 unreadable until closed, completion by the settle window and by a marker,
+  events committed mid-recording, continuous sound (no silence) moving the cursor, a pause cut by the end of the bytes
+  with guard 0 staying pending, a plain MP4 unreadable until closed, completion by the settle window and by a marker,
   a shortened file starting again, refusals, and the CLI.

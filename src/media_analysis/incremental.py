@@ -25,8 +25,10 @@ mtime have not changed for `settle` seconds between calls (the settle window of 
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
+import math
 import os
 import re
 import tempfile
@@ -150,8 +152,8 @@ def follow(input_path: str, kind: str, parameters: Optional[Dict[str, Any]], sta
     """One incremental run. Returns a `media-analysis/follow@1` document; raises AnalysisError on failure."""
     if kind not in SUPPORTED_KINDS:
         raise AnalysisError("INVALID_INPUT", f"{kind} cannot be measured incrementally", {"supported_kinds": list(SUPPORTED_KINDS)})
-    if not (isinstance(settle, (int, float)) and settle >= 0) or not (isinstance(guard, (int, float)) and guard >= 0):
-        raise AnalysisError("INVALID_INPUT", "settle and guard must be non-negative seconds")
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v >= 0 for v in (settle, guard)):
+        raise AnalysisError("INVALID_INPUT", "settle and guard must be finite, non-negative seconds")
     policy = policy or PathPolicy()
     params = validate_parameters(kind, dict(parameters or {}))
     path = str(policy.resolve_input(input_path))
@@ -206,10 +208,17 @@ def follow(input_path: str, kind: str, parameters: Optional[Dict[str, Any]], sta
     stream = select_stream(probe, "audio" if kind == "silence" else "video", params["stream"])
     complete = reason is not None
     t0 = time.monotonic()
-    if kind == "silence":
-        run = _silence_run(ctx, st, params, stream, guard, complete)
-    else:
-        run = _scene_run(ctx, st, params, guard, complete)
+    before = copy.deepcopy(st["committed"])
+    run = _measure(ctx, st, kind, params, stream, guard, complete)
+    if complete:
+        after = os.stat(path)
+        if (after.st_size, after.st_mtime) != (size, mtime):
+            # it grew while the completing run read it: the probe's duration and the decoded range would describe different files
+            st["committed"] = before
+            complete, reason = False, None
+            completion.update(reason=None, changed_during_run=True)
+            st["observed"] = {"size": after.st_size, "mtime": after.st_mtime, "since": clock()}
+            run = _measure(ctx, st, kind, params, stream, guard, False)
     run["seconds"] = round(time.monotonic() - t0, 3)
     run["size"] = size
     st["runs"].append(run)
@@ -223,6 +232,12 @@ def follow(input_path: str, kind: str, parameters: Optional[Dict[str, Any]], sta
         data = _data(kind, stream, None, params, committed)
     _save_state(state_file, st)
     return _document(st, path, kind, params, analyzer, data, complete, completion, restarted, run=run, readable=True)
+
+
+def _measure(ctx: AnalysisContext, st: Dict[str, Any], kind: str, params: Dict[str, Any], stream: Dict[str, Any], guard: float, complete: bool) -> Dict[str, Any]:
+    if kind == "silence":
+        return _silence_run(ctx, st, params, stream, guard, complete)
+    return _scene_run(ctx, st, params, guard, complete)
 
 
 def _data(kind: str, stream: Dict[str, Any], duration: Optional[float], params: Dict[str, Any], committed: Dict[str, Any]) -> Dict[str, Any]:
@@ -248,7 +263,10 @@ def _silence_run(ctx: AnalysisContext, st: Dict[str, Any], params: Dict[str, Any
     committed = st["committed"]
     until = float(committed["until"])
     rate = int(stream.get("audio", {}).get("sample_rate") or 48000)
-    for start in _starts(until - _SILENCE_LEAD if until > 0 else 0.0):
+    # min_duration before the committed point: any silent run still open there started less than min_duration before it (a longer one
+    # was reported and is pending), so a run from here counts it in full
+    target = max(0.0, until - float(params["min_duration"]) - _SILENCE_LEAD) if until > 0 else 0.0
+    for start in _starts(target):
         ctx.record("ffmpeg", f"silencedetect on audio stream {params['stream']} from {start:.3f}s (growing file)")
         # after silencedetect (so its input is untouched): one frame per second of samples, each printing its sample
         # count, so the run knows the first and the last sample it decoded
@@ -261,23 +279,22 @@ def _silence_run(ctx: AnalysisContext, st: Dict[str, Any], params: Dict[str, Any
         frames = [(float(m.group(1)), float(n)) for m, n in zip(_AFRAME.finditer(r.stdout), _NSAMPLES.findall(r.stdout))]
         if r.returncode != 0 and (complete or not frames):
             raise _failed(r, "silencedetect")
-        if not frames or frames[0][0] <= max(until, 0.0) + _TOL or start == 0.0:
+        if not frames or frames[0][0] <= target + _TOL or start == 0.0:
             break
     available = frames[-1][0] + frames[-1][1] / rate if frames else until
     pairs = parse_silencedetect(r.stderr)
-    new = [p for p in pairs if until <= 0 or p[0] >= until - _TOL]
+    new = [p for p in pairs if until <= 0 or p[1] is None or p[1] > until + _TOL]   # every silence committed so far ends by `until`
     if complete:
         commit, new_until = new, max(available, until)
     else:
         safe = available - guard
-        idx = next((i for i, (_s, e) in enumerate(new) if e is None or e > safe), len(new))
+        # a silence still open at the end of what was decoded is pending, also when ffmpeg closed it there (end of stream, guard 0)
+        idx = next((i for i, (_s, e) in enumerate(new) if e is None or e > safe or e >= available - _TOL), len(new))
         commit = new[:idx]
         if idx < len(new) and new[idx][0] <= safe:
-            new_until = new[idx][0]                 # the sample a pending silence starts on: the filter's state is reset there
-        elif commit:
-            new_until = commit[-1][1]               # the first sound after the last finished silence
+            new_until = new[idx][0]                 # the first sample of a pending silence: the next run must see it start
         else:
-            new_until = until
+            new_until = max(until, safe)            # no silence open before `safe`: everything to it is measured
     committed["pairs"] = committed["pairs"] + [[s, e] for s, e in commit]
     committed["until"] = new_until
     return {"from": round(start, 6), "to": round(available, 6), "committed_until": round(new_until, 6), "events": len(commit), "complete": complete}
