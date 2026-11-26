@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.3.0 - 2026-11-26
+
+- feat: follow: incremental silence / scene measurement on a file still being written (ADR-041) (#48) (703d0a4)
+
 ## v0.2.1 - 2026-11-26
 
 - fix: burned-in sampling counts whole intervals, so ffmpeg 9.1 and 6.1 agree on a clip shorter than the interval (#49) (3d400d1)
