@@ -17,7 +17,7 @@ import subprocess
 import threading
 import time
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Sequence
 
 from .errors import AnalysisError
 
@@ -156,6 +156,7 @@ def ffprobe_argv(exe: str, input_path: str, *options: str) -> List[str]:
     return [exe, "-hide_banner", "-protocol_whitelist", "file", "-v", "error", *options, "-i", input_path]
 
 
-def ffmpeg_null_argv(exe: str, input_path: str, *options: str, loglevel: str = "info") -> List[str]:
-    """ffmpeg reading one input, running a filter, writing nothing (`-f null -`)."""
-    return [exe, *FF_INPUT_PREFIX, "-loglevel", loglevel, "-i", input_path, *options, "-f", "null", "-"]
+def ffmpeg_null_argv(exe: str, input_path: str, *options: str, loglevel: str = "info", input_options: Sequence[str] = ()) -> List[str]:
+    """ffmpeg reading one input, running a filter, writing nothing (`-f null -`). `input_options` go before "-i"
+    (a seek on a growing file, ADR-041); they are built by this package, never taken from a request."""
+    return [exe, *FF_INPUT_PREFIX, "-loglevel", loglevel, *input_options, "-i", input_path, *options, "-f", "null", "-"]

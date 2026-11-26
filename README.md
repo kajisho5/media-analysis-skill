@@ -182,6 +182,11 @@ request cannot express):
   long recording (a talk, a lecture). Spans of whole sentences, ranked by measured speech energy, caller-supplied
   applause / laughter spans, keyword density and speaker changes, each with its reasons. Candidates only; nothing is
   cut (ADR-032).
+- `media-analysis follow <input> --kind silence|scene_detection --state <file> [--final | --complete-marker <file>]
+  [--settle S]`: measures a recording that is still being written (Matroska, MPEG-TS, fragmented MP4 / MOV). Each run
+  measures only the part since the last run and appends it to the state file. The last few seconds on disk are
+  measured again next time. When the recording is complete (`--final`, a marker file, or size unchanged for `--settle`
+  seconds), the result equals one run on the final file. A plain MP4 cannot be read until it is closed (ADR-041).
 
 ## How video-production-agent consumes media-analysis-skill
 

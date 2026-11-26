@@ -715,3 +715,58 @@ The release step now installs `-e ".[vad,events]" pytest`, the same as `tests.ym
   release (0.2.0).
 - Verification: `tests/test_unit.py` (frame shift, no texture → `None`, sub-sample shift, pan vs shake jitter, parser and
   windows), `tests/test_integration.py::test_picture_quality_on_known_construction`, eval case 21 (`picture.mp4`).
+
+## ADR-041 Incremental measurement on a file still being written (`follow`, roadmap step 6)
+- Context: talks and corporate events are recorded for hours, and the edit (a digest right after the session) has to
+  start before the recording ends. Re-measuring the whole file on every look costs the whole file each time. ingest-skill
+  `offload --follow` already copies a recording as it grows and marks it `growing` (its ADR-007).
+- Decision: a workflow command, `media-analysis follow <input> --kind silence|scene_detection --state <file>`
+  (`media_analysis.incremental.follow`, document `media-analysis/follow@1`, state `media-analysis/follow-state@1`). Each
+  run measures from the last committed position to what is on disk, appends what it finished to the state file
+  (`committed.pairs` / `committed.cuts` and one entry per run under `runs`), and leaves the unfinished tail for the next
+  run. Nothing is cached in the Observation cache: the state file is the incremental result.
+  - What is committed: everything up to `guard` seconds (default 2) before the last decoded sample or frame, except an
+    event still open there. `silence` commits up to that point, or up to the first sample of a silence that has started
+    but not ended (also one ffmpeg closed only because the bytes ended). A resumed silence run starts `min_duration`
+    before the committed point. Any silent stretch still open there started less than `min_duration` before it, since a
+    longer one was reported and is pending. So the run counts it in full and is in the state a full run is in.
+    Continuous sound with no silence still moves the point forward. `scene_detection` commits frames. A resumed run starts two
+    frames before the next uncommitted frame, because scdet's score uses the frame before and the previous frame's
+    difference. Frame numbers are re-aligned on the pts of that anchor frame.
+  - Timestamps: `-copyts -start_at_zero` with `-ss` before `-i`, so a resumed run prints the times a full run prints,
+    digit for digit. Shifting a run that starts at 0 by the seek time instead would differ in the last digit, because
+    silencedetect prints six significant digits.
+  - Some demuxers land after the requested time when they seek (MPEG-TS lands up to a few seconds late). A run is
+    used only when it decoded from at or before the point it needs: the first sample time for silence, the anchor
+    frame for scenes. Otherwise it starts again 4, 16, 64 s earlier, and finally from 0. Starting earlier is safe for
+    both filters: their state is reset again at the committed point.
+  - Completion: `--final`; a marker file (`--complete-marker`); or size and mtime unchanged for `--settle` seconds
+    (default 30) between runs, the same rule as ingest-skill. The completing run measures to the end, and its `data`
+    comes from the analyzer's own `silence_data` / `scene_data` with the final file's duration. A later run on the
+    unchanged file returns the stored result and measures nothing. While the file grows, `data.duration` is `null` and a
+    scene still running has `end: null`.
+  - A file that grows while the completing run reads it is not completed: that run is measured again as an ordinary one
+    (`completion.changed_during_run`), so the probe's duration and the decoded range always describe the same bytes.
+  - Replacement: a file shorter than at the last run, or whose 64 KiB around the middle of what the last run saw
+    differs, is measured again from the start (`restarted` says why). Muxers rewrite headers at the start and add an
+    index at the end when they close a file; they do not touch the middle.
+- Containers: a growing file can be measured when its demuxer reads a prefix of it. Matroska / WebM written live,
+  MPEG-TS and fragmented MP4 / MOV (`-movflags frag_keyframe+empty_moov`) all work. A plain MP4 / MOV writes its index
+  (moov) at the end, so ffprobe cannot open it before it is closed. Such a run returns `readable: false` with the reason
+  and a hint, and measures nothing. A fragmented MP4 cut in the middle of a box header can also be unreadable for one
+  look (1 of 20 cut points in the test fixture); the next look reads it.
+- Kinds not offered: `loudness` (integrated loudness gates over the whole programme), `speech_regions` and
+  `audio_events` (model state, and resampling from a seek point does not reproduce the full run's samples),
+  `edit_style` and `highlight_signals` (medians over the whole file). These are measured on the closed file, or on a
+  closed chunk of it by the caller.
+- Measured (test fixture: 40 s, a cut every 3 s, a 2 s pause every 7 s, three looks at 1/3, 2/3 and the end of the
+  bytes written by ffmpeg to a pipe): the final result equals one analyzer run on the final file for both kinds in
+  Matroska, MPEG-TS and fragmented MP4. The three runs decoded 1.1–1.3 × the duration in total, against 2 × when each
+  look starts from 0.
+- Contract: unchanged. `follow` is a CLI workflow command like `library` and `highlights`. Its output data has the
+  shape of the existing kinds, and no tool, kind or parameter was added. `runner.ffmpeg_null_argv` gained
+  `input_options` (built by this package, never from a request).
+- Verification: `tests/test_incremental.py`, which covers: appended twice equals one run (2 kinds × 3 containers),
+  events committed mid-recording, continuous sound (no silence) moving the cursor, a pause cut by the end of the bytes
+  with guard 0 staying pending, a plain MP4 unreadable until closed, completion by the settle window and by a marker,
+  a shortened file starting again, refusals, and the CLI.

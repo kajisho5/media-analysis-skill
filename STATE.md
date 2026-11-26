@@ -1,6 +1,6 @@
 # Repository state
 
-Last updated: 2026-11-20 for roadmap step 12 (`picture_quality`); 2026-11-13 for roadmap step 5 (`audio_events`, `highlight_signals`); sections not touched then were checked on 2026-10-30
+Last updated: 2026-11-26 for roadmap step 6 (`follow`, growing files); 2026-11-20 for roadmap step 12 (`picture_quality`); 2026-11-13 for roadmap step 5 (`audio_events`, `highlight_signals`); sections not touched then were checked on 2026-10-30
 against `main` at `45d07ad` (Release v0.1.3). Every statement below was checked
 against the code, a command run or the GitHub API on that date; anything that could not be checked is marked
 **unverified**.
@@ -27,7 +27,10 @@ against the code, a command run or the GitHub API on that date; anything that co
   saves an `edit_style` profile, `style diff <ref> <cand>` compares two; ADR-030), `library` (`library index <folder>
   --index <file>` / `library search`: a B-roll index with measured metadata and tags, incremental re-scan; ADR-031),
   `highlights` (candidates of a long recording on sentence boundaries, with reasons; applause / laughter spans come
-  from the caller, for example this Skill's `audio_events` observation; ADR-032, ADR-036).
+  from the caller, for example this Skill's `audio_events` observation; ADR-032, ADR-036), `follow` (`silence` or
+  `scene_detection` on a recording still being written: each run measures only the part since the last run and appends
+  it to a state file; the completing run equals one run on the final file; Matroska, MPEG-TS, fragmented MP4 / MOV;
+  ADR-041).
 - Contract `media-analysis/contract@1` (`schema_versions`: contract / request / response / observation all `1`).
   15 tools, 16 analysis kinds, derived from the analyzer registry:
 

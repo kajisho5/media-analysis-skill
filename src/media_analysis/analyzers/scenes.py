@@ -72,8 +72,12 @@ class SceneAnalyzer(Analyzer):
         r = run_argv(argv, ctx.timeout)
         if r.returncode != 0:
             raise AnalysisError("ANALYSIS_FAILED", "scdet failed", {"stderr_tail": "\n".join(r.stderr.strip().splitlines()[-5:])})
-        cuts = parse_scdet(r.stdout)
-        scenes = build_scenes(cuts, duration, parameters["min_scene_duration"])
-        return {"stream_index": s["index"], "stream_ordinal": parameters["stream"], "duration": duration, "method": "ffmpeg scdet score",
-                "threshold": parameters["threshold"], "min_scene_duration": parameters["min_scene_duration"],
-                "cuts": cuts, "cut_count": len(cuts), "scenes": scenes, "scene_count": len(scenes)}
+        return scene_data(s, duration, parameters, parse_scdet(r.stdout))
+
+
+def scene_data(stream: Dict[str, Any], duration: Optional[float], parameters: Dict[str, Any], cuts: List[Dict[str, float]]) -> Dict[str, Any]:
+    """The `scene_detection` data from measured cuts; shared with the incremental run on a growing file (ADR-041)."""
+    scenes = build_scenes(cuts, duration, parameters["min_scene_duration"])
+    return {"stream_index": stream["index"], "stream_ordinal": parameters["stream"], "duration": duration, "method": "ffmpeg scdet score",
+            "threshold": parameters["threshold"], "min_scene_duration": parameters["min_scene_duration"],
+            "cuts": cuts, "cut_count": len(cuts), "scenes": scenes, "scene_count": len(scenes)}
