@@ -418,6 +418,12 @@
   cached `edit_style` Observations are recomputed once. Contract `@1` additive: one parameter, `filter:edgedetect` in
   `style`'s required capabilities and in `capability_names`, the tool description. video-production-agent's
   `check_contract` accepts it unchanged; a re-pin shows the new parameter and capability.
+- Addendum (2026-11-26, ffmpeg 9.1): samples are counted in whole intervals of the probed duration
+  (`burnin.whole_intervals`). ffmpeg's `fps` filter differs between releases at the end of a stream. 9.1 (choco on the
+  Windows CI runner) emits the frame at 0 s for a clip shorter than the interval, and 6.1 does not. So the same 0.4 s clip
+  was `measured` on one and `not_performed` on the other. Frames past the last whole interval are now dropped before they
+  are summarised. A sample stands for the interval it starts, so a clip shorter than the interval still has no sample, on
+  every release. On 6.1 the output is unchanged: the fixtures sample the same frames. So `algorithm_version` stays `2`.
 
 ## ADR-034 `scene_detection` maps its video stream as `0:V:n`
 - Context: ADR-033 switched `edit_style` and burned-in sampling to `0:V:n`. `scene_detection` still mapped

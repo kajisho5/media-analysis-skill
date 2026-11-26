@@ -24,6 +24,8 @@ the picture. Busy, high-detail pictures (foliage, crowds, fine patterns) can pro
 what was measured and the caller decides what it means."""
 from __future__ import annotations
 
+import math
+
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..errors import AnalysisError
@@ -235,6 +237,15 @@ def summarise(frames: List[List[Dict[str, Any]]], interval: float, duration: Opt
     }
 
 
+def whole_intervals(duration: Optional[float], interval: float) -> int:
+    """How many samples the stream holds: one per whole interval (a sample stands for the interval it starts). ffmpeg's fps
+    filter does not agree with itself across releases at the end of a stream: 9.x emits the frame at 0 s for a clip shorter
+    than the interval, 6.x does not. Counting whole intervals from the probed duration makes the result the same on both."""
+    if not duration or duration <= 0:
+        return 1 << 30
+    return int(math.floor(duration / interval + 1e-6))
+
+
 def measure(ffmpeg: str, input_path: str, stream_ordinal: int, width: int, height: int, interval: float, duration: Optional[float],
             timeout: Optional[float]) -> Dict[str, Any]:
     """Sample, detect and summarise. Frames are read from ffmpeg's stdout one at a time and reduced to their regions
@@ -255,6 +266,7 @@ def measure(ffmpeg: str, input_path: str, stream_ordinal: int, width: int, heigh
     r = stream_records(argv, timeout, 2 * w * h, on_frame)
     if r.returncode != 0:
         raise AnalysisError("ANALYSIS_FAILED", "burned-in subtitle frame sampling failed", {"stderr_tail": "\n".join(r.stderr.strip().splitlines()[-5:])})
+    del frames[whole_intervals(duration, interval):]
     common = {"interval": interval, "analysis_width": w, "analysis_height": h, "frames_sampled": len(frames)}
     if not frames:
         # e.g. a clip shorter than the sampling interval: nothing was looked at, so nothing is reported as measured
